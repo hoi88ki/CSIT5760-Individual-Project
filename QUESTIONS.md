@@ -61,6 +61,27 @@ _Last updated: 2026-11-05._
 
 ---
 
+## 5. Resolution status (implemented)
+
+The answers above were adopted in code. Summary:
+
+| Q | Implemented as |
+|---|----------------|
+| Q1 | Buyer `createOrder` → Seller `createShipment(orderId, …)` (new `Order` struct) |
+| Q2 | Insurance module **removed** |
+| Q3, Q11 | `payCustomsDuty(id, amount)` accepts **0** |
+| Q4 | `DocType` re-ordered; CoO = Seller (no NFT); Inspection/Insurance/Clearance = Verifier + NFT; `BillOfLadingOrAWB` = Carrier |
+| Q8 | **ERC-20 stablecoin** settlement (`SafeERC20` + `MockERC20`) |
+| Q10 | Reclaim limited to Buyer / issuing bank / admin |
+| Q12 | **Local kubo** IPFS (`scripts/ipfs-add.js`) |
+| Q13 | No document encryption |
+| Q18 | Working static dashboard in `dapp/` |
+| Q5, Q6, Q7, Q9, Q14–Q17, Q19 | Implemented as assumed (unchanged) |
+
+See `docs/DESIGN_DECISIONS.md` and `ProposalImprovement.md` (section F) for rationale.
+
+---
+
 ### How to answer
 
 Please annotate the relevant row above (e.g. `Q1: …`) or reply inline. Anything not answered will

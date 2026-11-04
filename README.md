@@ -93,8 +93,7 @@ The design uses **one storage layout, modular source files, and a single deploym
 |-----------|------|----------------|
 | `ShipmentState` | abstract (storage base) | Shared `Shipment`/`DocRecord` structs, `Incoterm`/`Phase`/`DocType` enums, custom errors, role constants, escrow/bookkeeping mappings. |
 | `DocumentRegistry` | abstract module | `DocType` × `DocRecord{cid, issuer, timestamp, locked, certId}`; per-`DocType` issuer checks; anchor-once-then-lock; triggers `TradeCertNFT` minting for verifier types. |
-| `SettlementModule` | abstract module | `_triggerAtomicPayout()` (`nonReentrant`, strict CEI), per-Incoterm required-document bitmask, duty escrow, `riskHolder` tracking, deadline reclaim, either-bank force-finalize. |
-| `InsuranceModule` | abstract module | Optional cargo-insurance premium escrow, damage-claim filing, and claim resolution paid to the current `riskHolder` (from the proposal workflow diagram). |
+| `SettlementModule` | abstract module | Orders → shipments, ERC-20 L/C escrow, `_triggerAtomicPayout()` (`nonReentrant`, strict CEI), per-Incoterm required-document bitmask, duty escrow, `riskHolder` tracking, deadline reclaim, either-bank force-finalize. |
 | `TradeChainCore` | concrete (composition root) | Single entry point for all functions; inherits every module; deploys and **owns** the standalone `EBLToken` and `TradeCertNFT`. |
 | `EBLToken` | standalone ERC-721 | `ERC721URIStorage` eB/L title token, escrowed by the core until settlement. |
 | `TradeCertNFT` | standalone ERC-721 | Verifiable certificate token; minted **only** through the authorized `anchorDocument()` path; revocation = burn. |
@@ -109,8 +108,6 @@ ShipmentState (abstract) ── ReentrancyGuard (OZ v5)
 DocumentRegistry (abstract)
       │
 SettlementModule (abstract)
-      │
-InsuranceModule (abstract)
       │
 TradeChainCore (concrete)  ──deploys──►  EBLToken
                            ──deploys──►  TradeCertNFT
@@ -137,21 +134,21 @@ Any call with a missing role reverts with `Unauthorized(...)`. Admin can batch-g
 
 | `DocType` | Index | Designated anchor role | Certificate NFT? |
 |-----------|:-----:|------------------------|:----------------:|
-| `CommercialInvoice` | 0 | Seller | no |
-| `PackingList` | 1 | Seller | no |
-| `BillOfLading` | 2 | Carrier (via `confirmVesselLoading`) | no |
-| `CertificateOfOrigin` | 3 | Verifier | **yes** |
-| `InspectionCertificate` | 4 | Verifier | **yes** |
-| `InsuranceCertificate` | 5 | Verifier | **yes** |
-| `CustomsClearance` | 6 | Verifier | **yes** |
+| `CommercialInvoice` | 0 | Seller (at `createShipment`) | no |
+| `PackingList` | 1 | Seller (at `createShipment`) | no |
+| `CertificateOfOrigin` | 2 | Seller (via `anchorDocument`) | no |
+| `InspectionCertificate` | 3 | Verifier / inspection body | **yes** |
+| `InsuranceCertificate` | 4 | Verifier / insurer | **yes** |
+| `BillOfLadingOrAWB` | 5 | Carrier (via `confirmVesselLoading`) | no |
+| `CustomsClearance` | 6 | Verifier / customs officer | **yes** |
 
 Rules:
 
 - **Anchor-once-then-lock** — a second anchor for the same `(shipment, DocType)` reverts with
   `DocumentLocked`. A CID can never be replaced after anchoring.
-- The invoice + packing list are anchored by `createShipment()`; the B/L is anchored by
-  `confirmVesselLoading()` (which also updates the eB/L `tokenURI`); the four verifier types are
-  anchored by `anchorDocument()`.
+- The invoice + packing list are anchored by `createShipment()`; the B/L (or AWB) is anchored by
+  `confirmVesselLoading()` (which also updates the eB/L `tokenURI`); the certificate of origin +
+  the three verifier types are anchored by `anchorDocument()`.
 - Every verifier-type anchor **mints a `TradeCertNFT`** to the issuer. Burning the NFT (revoke)
   makes the document invalid at payout.
 
@@ -161,13 +158,13 @@ Rules:
 |-------|----------|---------|
 | `EBLToken` | ERC-721 (`ERC721URIStorage`) | Bill-of-Lading **title**. Minted to the core contract (escrow) and transferred to the Buyer at final delivery. |
 | `TradeCertNFT` | ERC-721 | Verifiable certificate attestations. Minted only by the core inside `anchorDocument()`; revocation = burn. |
-| **Native ETH** | — | L/C escrow (`openLetterOfCredit`) and customs duty (`payCustomsDuty`). A mock ERC-20 settlement token is a stretch goal (`OZ SafeERC20` already available via OpenZeppelin). |
+| **ERC-20 stablecoin** | ERC-20 (`SafeERC20`) | L/C escrow (`openLetterOfCredit`) and customs duty (`payCustomsDuty`). A `MockERC20` (6-decimal, USDC-like) is used on test networks; any stablecoin can be injected at deployment. |
 
 ### 4.5 Shipment Lifecycle (State Machine)
 
 ```
-                  createShipment()                openLetterOfCredit(){value:lcAmount}
-   (none) ─────────────────────────► Created ─────────────────────────────────────► LCFunded
+   Buyer createOrder()   Seller createShipment()      Buyer openLetterOfCredit()
+   Order ─────────────────────────► Created ───────────────────────────────────────► LCFunded
                                                                                        │
                                             confirmPickup()  (EXW ⇒ payout)            │
                           ┌────────────────────────────────────────────────────────────┘
@@ -231,31 +228,32 @@ Issuing/Advising  forceFinalizeDelivery(id)                → if the Buyer with
 │   ├── core/
 │   │   ├── ShipmentState.sol          # storage base: structs, enums, errors, roles
 │   │   ├── DocumentRegistry.sol       # 7 DocTypes, anchor-once-then-lock, cert minting
-│   │   ├── SettlementModule.sol       # atomic payout, duty escrow, risk, reclaim, force-finalize
-│   │   └── InsuranceModule.sol        # optional premium escrow + damage claims
+│   │   └── SettlementModule.sol       # orders, ERC-20 escrow, atomic payout, reclaim, force-finalize
 │   ├── tokens/
 │   │   ├── EBLToken.sol               # ERC-721 eB/L title token
 │   │   └── TradeCertNFT.sol           # ERC-721 certificate token (revocation = burn)
 │   ├── mocks/
-│   │   ├── MaliciousReentrancy.sol    # adversarial payee for the reentrancy test
-│   │   └── MockERC20.sol              # stretch-goal settlement token
+│   │   ├── MockERC20.sol              # 6-decimal demo stablecoin
+│   │   ├── MaliciousReentrancy.sol    # adversarial settlement token (reentrancy test)
+│   │   └── TradeChainHarness.sol      # test harness exposing internal guards
 │   └── TradeChainCore.sol             # composition root / single entry point
 ├── test/
-│   ├── helpers/                        # fixtures, role wiring, CID constants
-│   ├── EBLToken.test.js
-│   ├── TradeCertNFT.test.js
-│   ├── DocumentRegistry.test.js
-│   ├── Settlement.test.js
-│   ├── Incoterms.e2e.test.js
-│   ├── Neutrality.test.js             # reclaim / force-finalize
-│   ├── AccessControl.test.js
-│   ├── Reentrancy.test.js
-│   └── Insurance.test.js
+│   ├── helpers/fixture.js              # fixtures, role wiring, CID constants
+│   ├── Order.test.js                   # createOrder / createShipment / openLetterOfCredit
+│   ├── DocumentRegistry.test.js        # anchoring, certificate NFTs, revocation
+│   ├── AccessControl.test.js           # role & state-machine matrix
+│   ├── Incoterms.e2e.test.js           # happy-path E2E for EXW / FOB / CIF / DDP
+│   ├── Neutrality.test.js              # reclaim / force-finalize
+│   ├── Reentrancy.test.js              # adversarial token
+│   ├── Tokens.test.js                  # EBLToken & TradeCertNFT units
+│   ├── Views.test.js                   # getters, doc masks, token views
+│   └── Harness.test.js                 # unreachable payout guards
 ├── scripts/
 │   ├── deploy.js                       # deploy core + tokens, wire roles
-│   ├── seed-demo.js                    # drive a full EXW→CIF→DDP demo
-│   └── verify.js                       # Etherscan verification helper
-├── dapp/                               # minimal one-page role dashboard (Next.js + ethers v6)
+│   ├── seed-demo.js                    # drive a full EXW→FOB→CIF→DDP demo
+│   ├── verify.js                       # Etherscan verification helper
+│   └── ipfs-add.js                     # local kubo IPFS upload → CIDv1
+├── dapp/                               # minimal one-page role dashboard (ethers v6, no build)
 ├── docs/
 │   ├── ARCHITECTURE.md
 │   ├── DESIGN_DECISIONS.md
@@ -274,13 +272,13 @@ Issuing/Advising  forceFinalizeDelivery(id)                → if the Buyer with
 
 | Technology / version | Purpose | Rationale |
 |----------------------|---------|-----------|
-| **Solidity `^0.8.24`** | Smart contract development | Custom errors, packed structs, built-in overflow checks. |
+| **Solidity `^0.8.24`** (compiled with 0.8.28 / Cancun) | Smart contract development | Custom errors, packed structs, built-in overflow checks; 0.8.28 supplies the `mcopy` builtin OpenZeppelin v5.6 needs. |
 | **Hardhat + Mocha/Chai + `solidity-coverage` + `hardhat-gas-reporter`** | Tests, coverage, gas profiling | De-facto standard local EVM suite; maps directly to the success criteria. |
 | **OpenZeppelin Contracts v5** | `ERC721URIStorage`, `AccessControl`, `ReentrancyGuard`, `SafeERC20` | Audited building blocks avoid re-implementing known vulnerabilities. |
-| **IPFS (Pinata SDK)** | Off-chain document PDFs + certificate metadata | Bulky files stay off-chain; only immutable CIDs are checked on-chain (O(1) gas). |
+| **IPFS (local kubo node)** | Off-chain document PDFs + certificate metadata | Bulky files stay off-chain; only immutable CIDs are checked on-chain (constant-bounded gas). Local node keeps documents private and independently verifiable. |
 | **Slither & Solhint** | Static security analysis | Automatic detection of reentrancy, access-control and storage mistakes. |
 | **GitHub Actions CI** | Compile + test + coverage + Slither on every push | Continuous, citable evidence for the security/coverage criteria. |
-| **Ethers.js v6 + Next.js** | Minimal one-page role dashboard | Mature wallet-connect stack; scope kept minimal to protect the contract grade. |
+| **Ethers.js v6 (static dashboard)** | Minimal one-page role dashboard | Mature wallet-connect stack, no build step; scope kept minimal to protect the contract grade. |
 | **Ethereum Sepolia Testnet** | Deployment + Etherscan verification | Public, well-supported testnet for a verifiable end-to-end demo. |
 
 ## 7. Getting Started
@@ -290,7 +288,7 @@ Issuing/Advising  forceFinalizeDelivery(id)                → if the Buyer with
 - Node.js ≥ 18 (developed on Node 26)
 - npm
 - (optional) [Slither](https://github.com/crytic/slither) via `pipx install slither-analyzer`
-- (optional) a [Pinata](https://www.pinata.cloud/) account + JWT for IPFS uploads
+- (optional) [kubo (IPFS)](https://docs.ipfs.tech/install/) for local document pinning
 - (optional) a Sepolia RPC URL + funded deployer key for deployment
 
 ### Install & compile
@@ -314,6 +312,9 @@ npx hardhat coverage
 REPORT_GAS=true npx hardhat test
 ```
 
+Current result: **67 tests passing · statements 100 % · branches 95.93 % · functions 100 % · lines 100 %**
+(mocks excluded from the denominator via `.solcover.js`).
+
 ### Lint & static analysis
 
 ```bash
@@ -329,13 +330,16 @@ npx hardhat run scripts/deploy.js --network sepolia
 npx hardhat run scripts/verify.js  --network sepolia
 ```
 
-### Minimal DApp
+### Minimal DApp (no build step)
 
 ```bash
-cd dapp
-npm install
-npm run dev
+npx hardhat node                                              # terminal 1
+npx hardhat run scripts/deploy.js --network localhost         # copy the core address
+node dapp/server.js                                           # terminal 2 → http://localhost:5173
 ```
+
+Paste the core address into the dashboard and select a role account. With a local node the
+unlocked accounts are used directly; MetaMask is picked up automatically when present.
 
 ## 8. Security Considerations
 
@@ -344,7 +348,7 @@ npm run dev
 | **Documentary fraud** | Payout attempted without the mandatory B/L, Inspection, Insurance (CIF) or Clearance certificate; a CID replaced after funding | `requireDocuments(bitmask)` on every transition; document slots **immutable once anchored** | Negative tests assert exact `MissingMandatoryDocument(DocType)` / `DocumentLocked()` reverts |
 | **Unauthorized attestations** | Exporter self-signs a regulatory certificate or forges a certificate NFT | Certificates mint **only** inside the per-`DocType`-authorized `anchorDocument()` path | Access-control matrix test: every unauthorized role / `DocType` and mint reverts |
 | **Reentrancy** | Malicious payee re-enters during payout | OZ `nonReentrant` + strict **CEI** (state finalised before transfers) | `slither --detect reentrancy-eth` clean; `MaliciousReentrancy.sol` fails to extract funds |
-| **Settlement stall** | Buyer withholds `confirmFinalDelivery()`; Seller never ships; one bank refuses to release | Shipment deadline + permissionless reclaim; **either** bank can force-finalize at objective completion | Timeout tests; payout succeeds independently from each bank wallet |
+| **Settlement stall** | Buyer withholds `confirmFinalDelivery()`; Seller never ships; one bank refuses to release | Shipment deadline + reclaim by Buyer / issuing bank / admin; **either** bank can force-finalize at objective completion | Timeout tests; payout succeeds independently from each bank wallet |
 | **Revoked attestation** | A verifier revokes a certificate after it was relied upon | Certificate burn makes the document invalid before payout; check at `_triggerAtomicPayout` | Test: burn a required cert → payout reverts |
 
 ## 9. Testing Plan
@@ -352,7 +356,7 @@ npm run dev
 | Test category | Representative scenario | Expected evidence |
 |---------------|-------------------------|-------------------|
 | **Happy-path E2E (4 Incoterms)** | Full flow per Incoterm incl. certificate NFTs and the DDP clearance gate | Atomic payout at the exact milestone in the matrix; `EBLToken` transfers to Buyer |
-| **Negative & boundary** | Omit each required document (incl. Clearance for DDP); wrong `msg.value`; empty `""` CID; duplicate anchoring; unauthorized uploads / mints | Deterministic custom-error reverts; zero funds move |
+| **Negative & boundary** | Omit each required document (incl. Clearance for DDP); insufficient token allowance; empty `""` CID; duplicate anchoring; unauthorized uploads / mints | Deterministic custom-error reverts; zero funds move |
 | **Neutrality & timeout** | Reclaim only after expiry; force-finalize reverts until objective-complete; per-bank release | No single party can stall settlement |
 | **Access control** | Exhaustive role × function × `DocType` matrix | `Unauthorized` / `AccessControlUnauthorizedAccount` reverts |
 | **Security & coverage** | `MaliciousReentrancy`, Slither + `solidity-coverage` in CI | No High/Medium findings; ≥ 90 % branch/statement coverage |
@@ -374,10 +378,10 @@ Slither & Solhint reports are retained as build artifacts for the security crite
 
 | Phase | Planned activities | Target date | Deliverable | Status |
 |-------|--------------------|-------------|-------------|--------|
-| **Phase 0** | Repo skeleton, README, tooling, CI | Week 1 (9–18 Nov) | This repository, compiling project | 🟡 in progress |
-| **Phase 1** | Implement all contracts (registry, cert NFT, settlement) + tests | Week 1 (9–18 Nov) | Compiling, tested contracts | ⬜ planned |
-| **Phase 2** | Slither remediation, malicious-contract simulations, coverage ≥ 90 % | Week 2 (19–24 Nov) | Coverage & Slither reports in CI | ⬜ planned |
-| **Phase 3** | Minimal role dashboard (Pinata + Ethers.js); deploy/verify on Sepolia; demo video + final report | Week 3 (25–29 Nov) | Verified contracts, demo, final report | ⬜ planned |
+| **Phase 0** | Repo skeleton, README, tooling, CI | Week 1 (9–18 Nov) | This repository, compiling project | ✅ done (started early) |
+| **Phase 1** | Implement all contracts (registry, cert NFT, settlement) + tests | Week 1 (9–18 Nov) | Compiling, tested contracts | ✅ done |
+| **Phase 2** | Slither remediation, malicious-contract simulations, coverage ≥ 90 % | Week 2 (19–24 Nov) | Coverage & Slither reports in CI | 🟡 coverage 100 %/95.9 % reached; Slither pending CI run |
+| **Phase 3** | Minimal role dashboard (local IPFS + ethers v6); deploy/verify on Sepolia; demo video + final report | Week 3 (25–29 Nov) | Verified contracts, demo, final report | 🟡 dashboard + local demo done; Sepolia deploy/video/report pending |
 
 **Progress log** — see the Git history (`git log --oneline`) for the per-commit record.
 
