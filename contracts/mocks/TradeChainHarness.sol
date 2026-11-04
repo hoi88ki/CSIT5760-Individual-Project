@@ -13,17 +13,17 @@ contract TradeChainHarness is TradeChainCore {
     constructor(IERC20 token) TradeChainCore(token) {}
 
     /// @dev Calls the internal atomic-payout engine without the public state guards.
-    function exposed_triggerAtomicPayout(uint256 id) external {
+    function exposedTriggerAtomicPayout(uint256 id) external {
         _triggerAtomicPayout(id);
     }
 
     /// @dev Exposes the internal per-DocType role lookup.
-    function exposed_roleForDocType(DocType d) external pure returns (bytes32) {
+    function exposedRoleForDocType(DocType d) external pure returns (bytes32) {
         return _roleForDocType(d);
     }
 
     /// @dev Exposes whether a DocType mints a certificate.
-    function exposed_isVerifierDocType(DocType d) external pure returns (bool) {
+    function exposedIsVerifierDocType(DocType d) external pure returns (bool) {
         return _isVerifierDocType(d);
     }
 }

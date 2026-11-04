@@ -40,11 +40,11 @@ describe("Settlement engine guards (harness)", function () {
     await h.connect(seller).createShipment(1n, CID.invoice, CID.packing);
 
     // Not funded.
-    await expect(h.exposed_triggerAtomicPayout(1n)).to.be.revertedWithCustomError(h, "InvalidState");
+    await expect(h.exposedTriggerAtomicPayout(1n)).to.be.revertedWithCustomError(h, "InvalidState");
 
     await h.connect(buyer).openLetterOfCredit(1n);
     // Funded, but FOB pays at LoadedOnVessel while the phase is still LCFunded.
-    await expect(h.exposed_triggerAtomicPayout(1n)).to.be.revertedWithCustomError(h, "SettlementNotDue");
+    await expect(h.exposedTriggerAtomicPayout(1n)).to.be.revertedWithCustomError(h, "SettlementNotDue");
   });
 
   it("rejects a second payout (EXW remains at PickedUp after settling)", async function () {
@@ -56,19 +56,19 @@ describe("Settlement engine guards (harness)", function () {
     await h.connect(buyer).openLetterOfCredit(1n);
     await h.connect(carrier).confirmPickup(1n); // EXW pays out here
 
-    await expect(h.exposed_triggerAtomicPayout(1n)).to.be.revertedWithCustomError(h, "SettlementAlreadyExecuted");
+    await expect(h.exposedTriggerAtomicPayout(1n)).to.be.revertedWithCustomError(h, "SettlementAlreadyExecuted");
   });
 
   it("exposes the doc-type role/verifier helpers", async function () {
     const { h } = await deployHarness();
-    expect(await h.exposed_roleForDocType(DocType.CertificateOfOrigin)).to.equal(await h.ROLE_SELLER());
-    expect(await h.exposed_roleForDocType(DocType.InspectionCertificate)).to.equal(await h.ROLE_VERIFIER());
-    expect(await h.exposed_roleForDocType(DocType.CustomsClearance)).to.equal(await h.ROLE_VERIFIER());
+    expect(await h.exposedRoleForDocType(DocType.CertificateOfOrigin)).to.equal(await h.ROLE_SELLER());
+    expect(await h.exposedRoleForDocType(DocType.InspectionCertificate)).to.equal(await h.ROLE_VERIFIER());
+    expect(await h.exposedRoleForDocType(DocType.CustomsClearance)).to.equal(await h.ROLE_VERIFIER());
 
-    expect(await h.exposed_isVerifierDocType(DocType.InspectionCertificate)).to.equal(true);
-    expect(await h.exposed_isVerifierDocType(DocType.InsuranceCertificate)).to.equal(true);
-    expect(await h.exposed_isVerifierDocType(DocType.CustomsClearance)).to.equal(true);
-    expect(await h.exposed_isVerifierDocType(DocType.CommercialInvoice)).to.equal(false);
-    expect(await h.exposed_isVerifierDocType(DocType.CertificateOfOrigin)).to.equal(false);
+    expect(await h.exposedIsVerifierDocType(DocType.InspectionCertificate)).to.equal(true);
+    expect(await h.exposedIsVerifierDocType(DocType.InsuranceCertificate)).to.equal(true);
+    expect(await h.exposedIsVerifierDocType(DocType.CustomsClearance)).to.equal(true);
+    expect(await h.exposedIsVerifierDocType(DocType.CommercialInvoice)).to.equal(false);
+    expect(await h.exposedIsVerifierDocType(DocType.CertificateOfOrigin)).to.equal(false);
   });
 });

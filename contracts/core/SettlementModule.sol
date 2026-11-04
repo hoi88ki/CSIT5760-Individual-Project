@@ -251,7 +251,11 @@ abstract contract SettlementModule is DocumentRegistry {
         if (p == Phase.LoadedOnVessel) {
             if (t == Incoterm.EXW) return base | _bit(DocType.BillOfLadingOrAWB);
             if (t == Incoterm.CIF) {
-                return base | _bit(DocType.InspectionCertificate) | _bit(DocType.BillOfLadingOrAWB) | _bit(DocType.InsuranceCertificate);
+                return
+                    base |
+                    _bit(DocType.InspectionCertificate) |
+                    _bit(DocType.BillOfLadingOrAWB) |
+                    _bit(DocType.InsuranceCertificate);
             }
             return base | _bit(DocType.InspectionCertificate) | _bit(DocType.BillOfLadingOrAWB); // FOB, DDP
         }
@@ -265,7 +269,11 @@ abstract contract SettlementModule is DocumentRegistry {
                     _bit(DocType.CustomsClearance);
             }
             if (t == Incoterm.CIF) {
-                return base | _bit(DocType.InspectionCertificate) | _bit(DocType.BillOfLadingOrAWB) | _bit(DocType.InsuranceCertificate);
+                return
+                    base |
+                    _bit(DocType.InspectionCertificate) |
+                    _bit(DocType.BillOfLadingOrAWB) |
+                    _bit(DocType.InsuranceCertificate);
             }
             if (t == Incoterm.FOB) {
                 return base | _bit(DocType.InspectionCertificate) | _bit(DocType.BillOfLadingOrAWB);
