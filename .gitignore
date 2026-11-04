@@ -33,8 +33,8 @@ keystore/
 # --------------------------------
 # Deployment records (local only)
 # --------------------------------
-deployments/localhost/
-deployments/hardhat/
+deployments/localhost*
+deployments/hardhat*
 
 # --------------------------------
 # Editor / OS
