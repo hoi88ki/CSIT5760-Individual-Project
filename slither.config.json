@@ -2,7 +2,5 @@
   "filter_paths": "node_modules|dapp|contracts/mocks",
   "exclude_dependencies": true,
   "solc_remaps": ["@openzeppelin/=node_modules/@openzeppelin/"],
-  "detectors_to_exclude": "naming-convention,solc-version,pragma,assembly,low-level-calls,cyclomatic-complexity",
-  "fail_on": "high",
-  "json": "slither-report.json"
+  "detectors_to_exclude": "naming-convention,solc-version,pragma,assembly,low-level-calls,cyclomatic-complexity"
 }
