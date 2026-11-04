@@ -51,6 +51,14 @@ describe("Token units", function () {
       await expect(ebl.setTokenURI(42n, "x")).to.be.revertedWithCustomError(ebl, "TokenDoesNotExist");
       await expect(ebl.transferTitle(42n, other.address)).to.be.revertedWithCustomError(ebl, "TokenDoesNotExist");
     });
+
+    it("advertises the ERC-721 and AccessControl interfaces", async function () {
+      const ebl = await deploy();
+      expect(await ebl.supportsInterface("0x01ffc9a7")).to.equal(true); // ERC-165
+      expect(await ebl.supportsInterface("0x80ac58cd")).to.equal(true); // ERC-721
+      expect(await ebl.supportsInterface("0x7965db0b")).to.equal(true); // AccessControl
+      expect(await ebl.supportsInterface("0xffffffff")).to.equal(false);
+    });
   });
 
   describe("TradeCertNFT", function () {
@@ -79,6 +87,15 @@ describe("Token units", function () {
         "AccessControlUnauthorizedAccount"
       );
       await expect(cert.revoke(7n)).to.be.revertedWithCustomError(cert, "TokenDoesNotExist");
+    });
+
+    it("exposes nextTokenId and advertises its interfaces", async function () {
+      const cert = await deploy();
+      expect(await cert.nextTokenId()).to.equal(1n);
+      await cert.mint(admin.address, "ipfs://a");
+      expect(await cert.nextTokenId()).to.equal(2n);
+      expect(await cert.supportsInterface("0x80ac58cd")).to.equal(true); // ERC-721
+      expect(await cert.supportsInterface("0x7965db0b")).to.equal(true); // AccessControl
     });
   });
 });

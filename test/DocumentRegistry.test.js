@@ -1,4 +1,5 @@
 const { expect } = require("chai");
+const { time } = require("@nomicfoundation/hardhat-network-helpers");
 const {
   Incoterm,
   DocType,
@@ -131,5 +132,26 @@ describe("DocumentRegistry — anchoring & certificate NFTs", function () {
         env.core.connect(env.verifier).revokeCertificate(id, DocType.InspectionCertificate)
       ).to.be.revertedWithCustomError(env.core, "CertificateNotFound");
     });
+
+    it("rejects revoking a non-certificate document type", async function () {
+      const env = await deployTradeChain();
+      const id = await funded(env);
+      await expect(
+        env.core.connect(env.seller).revokeCertificate(id, DocType.CertificateOfOrigin)
+      ).to.be.revertedWithCustomError(env.core, "DocumentNotAnchorable");
+    });
+  });
+
+  it("cannot anchor documents on a reclaimed shipment", async function () {
+    const env = await deployTradeChain();
+    const { shipmentId } = await createOrderAndShipment(env, { term: Incoterm.FOB });
+    await fundLC(env, shipmentId);
+    const { deadline } = await env.core.getShipment(shipmentId);
+    await time.increaseTo(Number(deadline) + 1);
+    await env.core.connect(env.buyer).reclaimExpiredLC(shipmentId);
+
+    await expect(
+      env.core.connect(env.verifier).anchorDocument(shipmentId, DocType.InspectionCertificate, CID.inspection)
+    ).to.be.revertedWithCustomError(env.core, "InvalidStateRange");
   });
 });

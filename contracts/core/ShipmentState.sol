@@ -166,11 +166,6 @@ abstract contract ShipmentState is AccessControl, ReentrancyGuard {
         if (o.buyer == address(0)) revert OrderNotFound(orderId);
     }
 
-    /// @dev True when phase `a` is at least as advanced as phase `b`.
-    function _phaseAtLeast(Phase a, Phase b) internal pure returns (bool) {
-        return uint8(a) >= uint8(b);
-    }
-
     /// @dev Single-bit mask for a DocType, used by requireDocuments(bitmask).
     function _bit(DocType d) internal pure returns (uint8) {
         return uint8(1) << uint8(d);

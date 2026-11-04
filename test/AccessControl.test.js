@@ -1,6 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
+const { loadFixture, time } = require("@nomicfoundation/hardhat-network-helpers");
 const {
   Incoterm,
   Phase,
@@ -142,6 +142,34 @@ describe("Access control & state-machine guards", function () {
       await expect(
         env.core.connect(env.admin).grantRoles([await env.core.ROLE_SELLER()], [])
       ).to.be.revertedWithCustomError(env.core, "ArrayLengthMismatch");
+    });
+  });
+
+  describe("creation & funding guards", function () {
+    it("createShipment requires the seller role", async function () {
+      const env = await loadFixture(fixture);
+      await env.core.connect(env.buyer).createOrder(env.seller.address, Incoterm.FOB, LC, await futureDeadline());
+      await expect(
+        env.core.connect(env.outsider).createShipment(1n, CID.invoice, CID.packing)
+      ).to.be.revertedWithCustomError(env.core, "AccessControlUnauthorizedAccount");
+    });
+
+    it("createShipment rejects an order whose deadline has elapsed", async function () {
+      const env = await loadFixture(fixture);
+      const deadline = (await futureDeadline(1));
+      await env.core.connect(env.buyer).createOrder(env.seller.address, Incoterm.FOB, LC, deadline);
+      await time.increaseTo(Number(deadline) + 1);
+      await expect(
+        env.core.connect(env.seller).createShipment(1n, CID.invoice, CID.packing)
+      ).to.be.revertedWithCustomError(env.core, "InvalidDeadline");
+    });
+
+    it("openLetterOfCredit requires the buyer role", async function () {
+      const env = await loadFixture(fixture);
+      const { shipmentId } = await createOrderAndShipment(env, { term: Incoterm.FOB });
+      await expect(
+        env.core.connect(env.outsider).openLetterOfCredit(shipmentId)
+      ).to.be.revertedWithCustomError(env.core, "AccessControlUnauthorizedAccount");
     });
   });
 });

@@ -289,7 +289,6 @@ abstract contract SettlementModule is DocumentRegistry {
         if (s.phase != Phase.LoadedOnVessel) revert InvalidState(id, Phase.LoadedOnVessel, s.phase);
 
         _requireDocuments(id, _requiredAt(s.term, Phase.Delivered));
-        if (s.term == Incoterm.DDP && !s.dutyPaid) revert CustomsDutyNotPaid(id);
 
         s.phase = Phase.Delivered;
         s.titleTransferred = true;

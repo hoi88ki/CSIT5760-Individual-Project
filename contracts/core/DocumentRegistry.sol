@@ -44,12 +44,11 @@ abstract contract DocumentRegistry is ShipmentState {
     }
 
     /// @notice The role authorised to issue a given document type.
+    /// @dev    `BillOfLadingOrAWB` is intentionally not routed here: it is anchored by the Carrier
+    ///         inside `confirmVesselLoading()`, which enforces `ROLE_CARRIER` directly.
     function _roleForDocType(DocType d) internal pure returns (bytes32) {
         if (d == DocType.CommercialInvoice || d == DocType.PackingList || d == DocType.CertificateOfOrigin) {
             return ROLE_SELLER;
-        }
-        if (d == DocType.BillOfLadingOrAWB) {
-            return ROLE_CARRIER;
         }
         return ROLE_VERIFIER; // Inspection / Insurance / CustomsClearance
     }
