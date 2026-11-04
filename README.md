@@ -69,8 +69,8 @@ neutrality** that the settlement requires without a trusted operator: either par
 bank) can stall or censor the release of funds. TradeChain encodes:
 
 - **Objective, machine-checkable release conditions** (required document set per Incoterm).
-- **Neutrality safeguards** — permissionless reclaim if the Seller never ships, and
-  either-bank force-finalize if the Buyer withholds confirmation.
+- **Neutrality safeguards** — deadline reclaim (triggered by the Buyer, issuing bank or admin) if
+  the Seller never ships, and either-bank force-finalize if the Buyer withholds confirmation.
 - **Tamper-evidence** — document slots are immutable once anchored; certificate NFTs are
   revocable (burn) so a withdrawn attestation is immediately visible on-chain.
 
@@ -79,7 +79,7 @@ bank) can stall or censor the release of funds. TradeChain encodes:
 | ID | Measurable objective | Success criterion |
 |----|----------------------|-------------------|
 | **OBJ-1** | Implement an ERC-721 **eB/L title token**, an **IPFS document registry** (7 `DocType`s), and **verifiable certificate NFTs** for third-party attestations. | Every document is anchored only by its designated role; verifier attestations mint unrevoked certificate NFTs; unauthorized calls revert. |
-| **OBJ-2** | Implement a **Smart L/C settlement module** with atomic payout and neutrality safeguards (permissionless expired-L/C reclaim; either-bank force-finalize). | Funds release only at the Incoterm-mandated milestone; the Buyer, the Seller, and no single bank together can stall settlement. |
+| **OBJ-2** | Implement a **Smart L/C settlement module** with atomic payout and neutrality safeguards (expired-L/C reclaim by buyer/issuing bank/admin; either-bank force-finalize). | Funds release only at the Incoterm-mandated milestone; neither the Buyer, the Seller, nor one stalled bank can hold settlement hostage. |
 | **OBJ-3** | Deliver automated **security analysis, testing, and a verified Sepolia deployment**. | ≥ 90% statement/branch coverage; no High/Medium Slither findings; contracts verified on Etherscan. |
 
 ## 4. System Architecture
