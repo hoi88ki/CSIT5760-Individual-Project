@@ -1,0 +1,42 @@
+{
+  "name": "tradechain",
+  "version": "1.0.0",
+  "description": "TradeChain — A Decentralized International Trade & Document Tracker (CSIT5760 Individual Project)",
+  "license": "MIT",
+  "author": "YUNG HOI KI (21232072)",
+  "keywords": [
+    "ethereum",
+    "solidity",
+    "hardhat",
+    "supply-chain",
+    "trade-finance",
+    "letter-of-credit",
+    "incoterms",
+    "erc721",
+    "ipfs"
+  ],
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "coverage": "hardhat coverage",
+    "gas": "cross-env REPORT_GAS=true hardhat test",
+    "lint": "solhint \"contracts/**/*.sol\"",
+    "lint:fix": "solhint \"contracts/**/*.sol\" --fix",
+    "node": "hardhat node",
+    "deploy:local": "hardhat run scripts/deploy.js --network localhost",
+    "deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia",
+    "verify:sepolia": "hardhat run scripts/verify.js --network sepolia",
+    "seed:local": "hardhat run scripts/seed-demo.js --network localhost",
+    "slither": "slither . --config-file slither.config.json"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "cross-env": "^7.0.3",
+    "dotenv": "^16.4.5",
+    "hardhat": "^2.29.1",
+    "solhint": "^5.0.5"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.6.1"
+  }
+}
