@@ -109,9 +109,9 @@ abstract contract SettlementModule is DocumentRegistry {
         o.fulfilled = true;
         o.shipmentId = id;
 
-        eblToken.mint(address(this), "");
         _anchorInternal(id, DocType.CommercialInvoice, invoiceCID, msg.sender);
         _anchorInternal(id, DocType.PackingList, packingListCID, msg.sender);
+        eblToken.mint(address(this), "");
 
         emit ShipmentCreated(id, orderId, msg.sender, o.buyer, o.term, o.lcAmount, o.deadline);
     }
@@ -216,7 +216,6 @@ abstract contract SettlementModule is DocumentRegistry {
 
         if (block.timestamp <= s.deadline) revert DeadlineNotReached(s.deadline);
         if (s.phase != Phase.LCFunded) revert NothingToReclaim(id);
-        if (s.lcPaid) revert SettlementAlreadyExecuted(id);
 
         s.phase = Phase.Reclaimed;
 

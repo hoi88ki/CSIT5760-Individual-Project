@@ -49,7 +49,7 @@ contract EBLToken is ERC721URIStorage, AccessControl {
 
     /// @notice The next token id to be minted.
     function nextTokenId() external view returns (uint256) {
-        return _nextId;
+        return _nextId + 1;
     }
 
     function supportsInterface(
