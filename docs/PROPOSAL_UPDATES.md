@@ -52,11 +52,20 @@ Also add a phrase to §5 `DocumentRegistry.sol`: "per `DocType`, records the CID
 **Where:** §7 Security Considerations, last row mitigation list (the "Malicious receiver hooks …" row).
 **Change:** delete "**Pausable circuit breakers**" from the mitigation list (the prototype relies on `nonReentrant` + CEI + enum state guards; a pausable admin could instead *cause* a settlement stall).
 
-### B.8 — IPFS confidentiality  *(return to local kubo)*
-**Where:** §6 Technology Stack, row **"IPFS + Pinata"**; and the **React (Vite)** row.
-**Change to:** "**IPFS (local kubo node)** — stores trade documents off-chain while preserving integrity through on-chain CID references; a **local** node keeps commercially sensitive documents private. (Hosted pinning, e.g. Pinata, is an optional convenience and is documented as a trade-off.)"
+### B.8 — IPFS topology & confidentiality  *(consortium, one node per role)*
+**Where:** §6 Technology Stack, row **"IPFS …"**; the **React (Vite)** row; §4 *Trade Document Management*; §5 `DocumentRegistry.sol`; §9 Phase 3.
+**Change to:** replace the single-node / Pinata wording with a **per-role consortium** model:
+> "**IPFS — one node per role (optional private swarm).** Each participant (exporter, importer, bank, logistics, verifier) runs its own kubo node. The issuing role adds the document to its own node; the on-chain record stores only the **CID** (one CID per `(shipment, DocType)`). The CID is then **replicated/pinned** to the counterparties' nodes (via a private swarm and/or IPFS Cluster / explicit pinning), so any replica can serve the same bytes. Because CIDs are content-addressed, integrity is guaranteed regardless of which node responds, and *no per-role on-chain records are needed*."
+
+Notes to include (and to state as limitations):
+- **Confidentiality is not provided by multi-node alone** — CIDs are public on-chain. Use a **private swarm** and/or encrypt before pinning if documents are commercially sensitive.
+- **Availability** depends on replication: without pinning, a CID becomes unfetchable when the only holding node is offline.
+- **Pinata is dropped** in this model (it is a single hosted provider); it may remain as an optional convenience only.
+- **No contract change is required** — the contracts already store only CIDs and are agnostic to the IPFS topology.
 
 ### B.9 — "Immutable" vs revocation  *(see how the proposal was updated)*
+> Note: this item is about on-chain **wording** (immutability vs revocation), not IPFS. It pairs
+> with B.8 but does not affect the storage topology.
 **Where:** §3 OBJ-1; §4 *On-Chain Data* list (first item); §5 `DocumentRegistry.sol`.
 **Change to:** replace "immutable on-chain records" with:
 > "**tamper-evident, append-only** anchors (a document CID can never be silently replaced — an already-anchored slot is locked), with **verifier-controlled revocation** for certificates so a withdrawn attestation is immediately visible on-chain."
@@ -103,5 +112,38 @@ The section is currently **empty**. Insert the two diagrams from
 The accompanying implementation already applies A.1–A.6, B.7, B.8, B.10 and B.11:
 seven contracts (`TradeChainCore`, `LetterOfCredit`, `ShipmentTracker`, `ComplianceEngine`,
 `DocumentRegistry`, `ShipmentNFT`, `TradeUSD`), role-gated minting, per-Incoterm compliance,
-milestone-gated title transfer, local-kubo IPFS, and no dispute module / no `Pausable`.
+milestone-gated title transfer, consortium (per-role) IPFS, and no dispute module / no `Pausable`.
 See [`REFACTOR_PLAN.md`](./REFACTOR_PLAN.md) for the mapping.
+
+---
+
+## Review of the updated proposal (v3) — remaining edits
+
+You applied most of A.1–A.6 and B.8/B.10. The following are **still outstanding** in the current
+`.docx` (each with its location):
+
+| # | Location | What to change |
+|---|----------|----------------|
+| R1 | §7 last row, *Mitigation* | Remove "**Pausable circuit breakers**" — `Pausable` was dropped (B.7). |
+| R2 | §7 last row, *Validation* | "0 high/medium findings" → "**0 High** findings (Medium triaged)"; "≥ 85 % branch" → "**≥ 90 %**". |
+| R3 | §3 **OBJ-4** | "≥ 85 % branch coverage" → "**≥ 90 %**" (B.11: a considerably high bar). |
+| R4 | §9 **Phase 2** deliverable | "≥ 85 % branch coverage, 0 high/medium Slither findings" → align to R2. |
+| R5 | §9 **Phase 3** | "integrated with **Pinata IPFS SDK**" → "integrated with the **per-role kubo IPFS nodes**". |
+| R6 | §6 **React (Vite)** row | "upload documents to **Pinata**" → "upload to the **role's own IPFS node**". |
+| R7 | §3 **OBJ-1** | "each of the **six** document types" — the registry actually holds **seven** `DocType`s. Say "each document type" or "**seven**". Also add **Customs Clearance** to §4 *Off-Chain Data* (DDP requires it). |
+| R8 | §7 **Asset Ownership Integrity** row | "Shipment ownership is represented by ERC-721 NFTs" → "The **document of title (e-B/L)** is represented by an ERC-721 NFT". |
+| R9 | §4 **Incoterms Enforcement** bullet | "ownership transfer" → "**title (document-of-title) transfer**" (consistent with A.1). |
+| R10 | §5.1 *Architecture or Workflow* | Still empty — insert the two pages of [`docs/diagrams/TradeChain.drawio`](./diagrams/TradeChain.drawio). |
+
+### Clarifications requested
+
+1. **IPFS replication mechanism** — is a shared **private swarm** enough for the demo, or do you
+   want **IPFS Cluster** (automated pinning/replication)? The current DApp only needs a per-role
+   node endpoint; Cluster is additional infrastructure.
+2. **Confidentiality** — CIDs are public on-chain. Do you accept consortium-only retrieval via a
+   **private swarm**, or should we add **encryption before pinning** (earlier Q13 said no
+   encryption)?
+3. **Coverage / Slither bar** — confirm the target: **≥ 90 %** branch and **fail on High only**?
+   (The repo is at ~87 % branch today and can be lifted to ≥ 90 %.)
+4. **Document count** — confirm **seven** `DocType`s (add Customs Clearance to §4's off-chain list)
+   so the proposal and the code agree.

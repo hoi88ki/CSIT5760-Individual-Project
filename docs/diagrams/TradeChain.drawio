@@ -27,11 +27,29 @@
           <mxGeometry x="915" y="60" width="160" height="50" as="geometry" />
         </mxCell>
 
-        <mxCell id="O1" value="Web3 DApp - React (Vite) + Ethers.js v6 + MetaMask&#10;Role dashboard: upload documents to IPFS, sign transactions,&#10;trigger TradeChainCore workflows on Ethereum Sepolia" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;dashed=1;" vertex="1" parent="1">
+        <mxCell id="O1" value="Web3 DApp - React (Vite) + Ethers.js v6 + MetaMask&#10;Role dashboard: upload to the role's IPFS node, sign transactions,&#10;trigger TradeChainCore workflows on Ethereum Sepolia" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;dashed=1;" vertex="1" parent="1">
           <mxGeometry x="20" y="150" width="520" height="95" as="geometry" />
         </mxCell>
-        <mxCell id="O2" value="Off-chain document store - IPFS (Pinata or local kubo node)&#10;Commercial Invoice · Packing List · Certificate of Origin ·&#10;Inspection Certificate · Insurance Certificate · Bill of Lading / AWB&#10;Only immutable CIDv1 anchors are stored on-chain" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;dashed=1;" vertex="1" parent="1">
-          <mxGeometry x="560" y="150" width="515" height="95" as="geometry" />
+        <mxCell id="O2" value="Off-chain: Consortium IPFS - one kubo node per role (optional private swarm)&#10;Each role uploads to its own node; a document is addressed by CID and replicated/pinned&#10;across the consortium, so any replica can serve the same CID (integrity is content-addressed)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;dashed=1;verticalAlign=top;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="560" y="140" width="515" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="N_EXP" value="IPFS node&#10;Exporter" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="573" y="205" width="95" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="N_IMP" value="IPFS node&#10;Importer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="676" y="205" width="95" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="N_BNK" value="IPFS node&#10;Bank" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="779" y="205" width="95" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="N_LOG" value="IPFS node&#10;Logistics" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="882" y="205" width="95" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="N_VER" value="IPFS node&#10;Verifier" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="985" y="205" width="80" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="O2DOCS" value="Documents by CID: Commercial Invoice · Packing List · Certificate of Origin ·&#10;Inspection Certificate · Insurance Certificate · Bill of Lading / AWB · Customs Clearance" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="565" y="285" width="505" height="45" as="geometry" />
         </mxCell>
 
         <mxCell id="CORE" value="TradeChainCore - composition root (single address, no proxies)&#10;OpenZeppelin AccessControl · role-gated orchestration · event log&#10;Roles: EXPORTER · IMPORTER · BANK · LOGISTICS · VERIFIER · ADMIN" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=13;" vertex="1" parent="1">
@@ -86,7 +104,13 @@
         <mxCell id="eo1" value="ethers v6 / MetaMask" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;dashed=1;" edge="1" parent="1" source="O1" target="CORE">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="eo2" value="CID anchors" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;dashed=1;" edge="1" parent="1" source="O2" target="K3">
+        <mxCell id="eo1b" value="upload to role's node" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;dashed=1;" edge="1" parent="1" source="O1" target="O2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eo2" value="CID anchors&#10;(per shipment + docType)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;dashed=1;" edge="1" parent="1" source="O2" target="K3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="erep1" value="pin / replicate" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=none;startArrow=none;dashed=1;strokeColor=#d6b656;" edge="1" parent="1" source="N_EXP" target="N_VER">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
@@ -226,6 +250,9 @@
         </mxCell>
         <mxCell id="we3" value="no shipment before deadline" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;dashed=1;" edge="1" parent="1" source="S3" target="E3">
           <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="OFL" value="Off-chain (consortium IPFS): each role (exporter, importer, bank, logistics, verifier) runs its own node. The issuing role adds the document to its node, the CID is anchored on-chain (DocumentRegistry), and the CID is replicated/pinned to the other nodes so any party can retrieve it." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="800" y="650" width="350" height="120" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>

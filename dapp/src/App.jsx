@@ -15,6 +15,7 @@ export default function App() {
   const [log, setLog] = useState("Ready.");
   const [shipment, setShipment] = useState("—");
 
+  const [ipfs, setIpfs] = useState({ node: "http://127.0.0.1:5001" });
   const [order, setOrder] = useState({ exporter: "", term: "1", lcAmount: "100000", deadlineDays: "30" });
   const [ship, setShip] = useState({ orderId: "1", invoiceCid: "", packingCid: "" });
   const [doc, setDoc] = useState({ shipmentId: "1", docType: "3", cid: "" });
@@ -86,9 +87,9 @@ export default function App() {
   async function onUpload(e, setter, key) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const value = e.target.dataset.provider || "kubo";
+    const provider = e.target.dataset.provider || "kubo";
     await run(`ipfs add ${file.name}`, async () => {
-      const cid = await uploadFile(file, value);
+      const cid = await uploadFile(file, { provider, apiBase: ipfs.node });
       setter((f) => ({ ...f, [key]: cid }));
       return null;
     });
@@ -212,6 +213,12 @@ export default function App() {
 
         <section>
           <h2>2 · Documents &amp; Funding</h2>
+          <label>IPFS node (this role's kubo API)</label>
+          <input name="node" value={ipfs.node} onChange={set(setIpfs)} placeholder="http://127.0.0.1:5001" />
+          <p className="hint">
+            Consortium model: each role runs its own kubo node (e.g. exporter :5001, importer :5011, bank
+            :5021). CIDs are anchored on-chain and replicated/pinned across nodes.
+          </p>
           <button onClick={() => run("approve token", approveToken)}>Approve TradeUSD</button>
           <button
             onClick={() => run("openLetterOfCredit", async () => core.connect(await signer()).openLetterOfCredit(doc.shipmentId))}

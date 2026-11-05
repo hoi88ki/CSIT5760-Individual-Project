@@ -211,7 +211,7 @@ Bank       forceFinalizeDelivery(id)                             → if the impo
 | **Solidity `^0.8.24`** (compiled 0.8.28 / Cancun) | Smart contracts | Custom errors, packed structs, checked arithmetic. |
 | **Hardhat + Mocha/Chai + `solidity-coverage` + `hardhat-gas-reporter`** | Tests, coverage, gas | De-facto standard local EVM suite. |
 | **OpenZeppelin Contracts v5** | `ERC721URIStorage`, `ERC20`, `AccessControl`, `ReentrancyGuard`, `SafeERC20` | Audited building blocks. |
-| **IPFS (local kubo node)** | Off-chain documents + certificate metadata | Bulky files stay off-chain; a local node keeps documents private; only CIDs reach the chain. Hosted Pinata is optional (`--pinata`). |
+| **IPFS — consortium, one node per role** | Off-chain documents + certificate metadata | Each participant runs its own kubo node; a document is addressed by CID and replicated/pinned across the consortium; only CIDs reach the chain. Optional private swarm; hosted Pinata only as a convenience. |
 | **Slither & Solhint** | Static analysis | Automatic detection of reentrancy/access-control issues. |
 | **GitHub Actions CI** | Compile + test + coverage + Slither | Citable evidence for the security/coverage criteria. |
 | **React (Vite) + Ethers.js v6 + MetaMask** | Role dashboard | Wallet-connect stack; uploads to local kubo and triggers core workflows. |
@@ -261,11 +261,14 @@ cd dapp && npm install && npm run dev                         # terminal 2 → h
 Paste the core address, choose a role account, and walk the numbered panels. See
 [`dapp/README.md`](./dapp/README.md).
 
-### Off-chain documents
+### Off-chain documents (consortium IPFS)
+
+Each role runs its own kubo node; the DApp's **IPFS node** field targets the active role's node.
 
 ```bash
-node scripts/ipfs-add.js path/to/invoice.pdf            # local kubo → CIDv1
-node scripts/ipfs-add.js path/to/invoice.pdf --pinata   # hosted Pinata (PINATA_JWT)
+node scripts/ipfs-add.js path/to/invoice.pdf                                 # default node (:5001)
+node scripts/ipfs-add.js path/to/invoice.pdf --api /ip4/127.0.0.1/tcp/5011   # a specific role node
+node scripts/ipfs-add.js path/to/invoice.pdf --pinata                        # optional hosted
 ```
 
 ## 7. Security Considerations

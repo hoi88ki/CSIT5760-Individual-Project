@@ -1,21 +1,25 @@
 // Adds a file to IPFS and prints its CIDv1 — the value passed to createShipment()/anchorDocument().
 //
-//   node scripts/ipfs-add.js path/to/invoice.pdf            # local kubo node (recommended)
-//   node scripts/ipfs-add.js path/to/invoice.pdf --pinata   # hosted Pinata (needs PINATA_JWT)
+//   node scripts/ipfs-add.js path/to/invoice.pdf                       # default local node
+//   node scripts/ipfs-add.js path/to/invoice.pdf --api /ip4/127.0.0.1/tcp/5011
+//   node scripts/ipfs-add.js path/to/invoice.pdf --pinata              # hosted (PINATA_JWT)
 //
-// Local kubo keeps commercially sensitive documents private and independently verifiable
-// (project decision B.8). Hosted pinning is available as an option for convenience.
+// Consortium model (decision B.8): each role runs its own kubo node. Use `--api` to target the
+// active role's node (or set IPFS_PATH before running so the CLI uses that node's repo/config).
+// Only the CID is anchored on-chain; content addressing means any node that pins the bytes serves
+// the same CID.
 const { execFileSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
-async function viaKubo(file) {
+async function viaKubo(file, api) {
+  const args = ["add", "--cid-version=1", "--quieter"];
+  if (api) args.push("--api", api);
+  args.push(path.resolve(file));
   try {
-    return execFileSync("ipfs", ["add", "--cid-version=1", "--quieter", path.resolve(file)], {
-      encoding: "utf8",
-    }).trim();
+    return execFileSync("ipfs", args, { encoding: "utf8" }).trim();
   } catch (err) {
-    console.error("Failed to talk to the local IPFS daemon.");
+    console.error("Failed to talk to the IPFS daemon.");
     console.error("Install kubo (https://docs.ipfs.tech/install/) and run `ipfs daemon` first.");
     console.error(err.message);
     process.exit(1);
@@ -49,10 +53,12 @@ async function viaPinata(file) {
 async function main() {
   const args = process.argv.slice(2);
   const usePinata = args.includes("--pinata");
-  const file = args.find((a) => !a.startsWith("--"));
+  const apiIdx = args.indexOf("--api");
+  const api = apiIdx >= 0 ? args[apiIdx + 1] : undefined;
+  const file = args.find((a, i) => !a.startsWith("--") && args[i - 1] !== "--api");
 
   if (!file) {
-    console.error("Usage: node scripts/ipfs-add.js <file> [--pinata]");
+    console.error("Usage: node scripts/ipfs-add.js <file> [--api <multiaddr>] [--pinata]");
     process.exit(1);
   }
   if (!fs.existsSync(file)) {
@@ -60,7 +66,7 @@ async function main() {
     process.exit(1);
   }
 
-  const cid = usePinata ? await viaPinata(file) : await viaKubo(file);
+  const cid = usePinata ? await viaPinata(file) : await viaKubo(file, api);
   console.log(`file: ${file}`);
   console.log(`cid : ${cid}`);
   console.log(`uri : ipfs://${cid}`);

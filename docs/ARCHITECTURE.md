@@ -79,8 +79,20 @@ phase and reverts with `MissingMandatoryDocument` on the first gap.
    holds every mandatory document, and (DDP) has duty paid.
 3. Sets `paid`, then `safeTransfer`s the L/C to the exporter (and the duty to the treasury).
 
-## 6. Off-chain layer
+## 6. Off-chain layer — consortium IPFS (one node per role)
 
-Documents and certificate metadata live on **IPFS** (local kubo node via `scripts/ipfs-add.js` and
-the DApp's kubo HTTP upload). Only CIDs are stored on-chain, so gas is constant-bounded per document
-and independent of file size. The React DApp reads on-chain state and calls the core directly.
+Documents and certificate metadata live on **IPFS**. Each participant (exporter, importer, bank,
+logistics, verifier) runs its **own kubo node**; the issuing role uploads to its own node and the
+resulting **CID** is anchored on-chain. The CID is then **replicated/pinned** to the counterparties'
+nodes (optionally via a private swarm and/or IPFS Cluster). Because CIDs are content-addressed,
+every replica serves the same bytes, so there is exactly **one CID per `(shipment, DocType)`** and
+**no contract change** is needed for this topology.
+
+Only CIDs are stored on-chain, so gas is constant-bounded per document and independent of file
+size. `scripts/ipfs-add.js` (with `--api <multiaddr>`) and the DApp's per-role node field
+(`src/ipfs.js`) target the active role's node. The React DApp reads on-chain state and calls the
+core directly.
+
+**Limitations.** CIDs are public on-chain, so per-role nodes give ownership/availability, not
+confidentiality — use a private swarm and/or encrypt before pinning for sensitive documents.
+Availability depends on replication: an unpinned CID is unfetchable once its only holder is offline.
