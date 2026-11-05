@@ -8,94 +8,93 @@ describe("Token units", function () {
     [admin, other, outsider] = await ethers.getSigners();
   });
 
-  describe("EBLToken", function () {
+  describe("TradeUSD", function () {
     async function deploy() {
-      const EBL = await ethers.getContractFactory("EBLToken");
-      const ebl = await EBL.deploy(admin.address);
-      await ebl.waitForDeployment();
-      return ebl;
+      const USD = await ethers.getContractFactory("TradeUSD");
+      const usd = await USD.deploy(admin.address, "TradeChain USD", "tUSD", 6);
+      await usd.waitForDeployment();
+      return usd;
     }
 
-    it("has correct metadata and an empty supply", async function () {
-      const ebl = await deploy();
-      expect(await ebl.name()).to.equal("TradeChain Electronic Bill of Lading");
-      expect(await ebl.symbol()).to.equal("TC-EBL");
-      expect(await ebl.nextTokenId()).to.equal(1n);
-    });
+    it("has correct metadata and a gated mint", async function () {
+      const usd = await deploy();
+      expect(await usd.name()).to.equal("TradeChain USD");
+      expect(await usd.symbol()).to.equal("tUSD");
+      expect(await usd.decimals()).to.equal(6);
 
-    it("mints, updates the URI and transfers title (admin/minter only)", async function () {
-      const ebl = await deploy();
-      await ebl.mint(admin.address, "ipfs://invoice");
-      expect(await ebl.ownerOf(1n)).to.equal(admin.address);
-      expect(await ebl.tokenURI(1n)).to.equal("ipfs://invoice");
-      expect(await ebl.exists(1n)).to.equal(true);
+      await usd.mint(other.address, 123n);
+      expect(await usd.balanceOf(other.address)).to.equal(123n);
 
-      await ebl.setTokenURI(1n, "ipfs://bl");
-      expect(await ebl.tokenURI(1n)).to.equal("ipfs://bl");
-
-      await ebl.transferTitle(1n, other.address);
-      expect(await ebl.ownerOf(1n)).to.equal(other.address);
-
-      await expect(ebl.connect(outsider).mint(outsider.address, "x")).to.be.revertedWithCustomError(
-        ebl,
+      await expect(usd.connect(outsider).mint(outsider.address, 1n)).to.be.revertedWithCustomError(
+        usd,
         "AccessControlUnauthorizedAccount"
       );
-      await expect(ebl.connect(outsider).transferTitle(1n, outsider.address)).to.be.revertedWithCustomError(
-        ebl,
+      await expect(usd.mint(ethers.ZeroAddress, 1n)).to.be.revertedWithCustomError(usd, "ZeroAddress");
+    });
+
+    it("rejects a zero admin", async function () {
+      const USD = await ethers.getContractFactory("TradeUSD");
+      await expect(USD.deploy(ethers.ZeroAddress, "x", "x", 6)).to.be.revertedWithCustomError(USD, "ZeroAddress");
+    });
+  });
+
+  describe("TradeChainCore.mint", function () {
+    it("reverts when the injected settlement token does not grant the core mint rights", async function () {
+      const USD = await ethers.getContractFactory("TradeUSD");
+      const usd = await USD.deploy(admin.address, "External USD", "xUSD", 6);
+      await usd.waitForDeployment();
+
+      const Core = await ethers.getContractFactory("TradeChainCore");
+      const core = await Core.deploy(await usd.getAddress());
+      await core.waitForDeployment();
+
+      await expect(core.mint(other.address, 1n)).to.be.revertedWithCustomError(core, "NotTokenAdmin");
+    });
+  });
+
+  describe("ShipmentNFT", function () {
+    async function deploy() {
+      const NFT = await ethers.getContractFactory("ShipmentNFT");
+      const nft = await NFT.deploy(admin.address);
+      await nft.waitForDeployment();
+      return nft;
+    }
+
+    it("mints, updates the URI and transfers the title (controller only)", async function () {
+      const nft = await deploy();
+      await nft.mint(admin.address, 1n, "ipfs://bl");
+      expect(await nft.ownerOf(1n)).to.equal(admin.address);
+      expect(await nft.tokenURI(1n)).to.equal("ipfs://bl");
+      expect(await nft.exists(1n)).to.equal(true);
+
+      await nft.setTokenURI(1n, "ipfs://bl2");
+      expect(await nft.tokenURI(1n)).to.equal("ipfs://bl2");
+
+      await nft.transferTitle(1n, other.address);
+      expect(await nft.ownerOf(1n)).to.equal(other.address);
+
+      await expect(nft.connect(outsider).mint(outsider.address, 2n, "x")).to.be.revertedWithCustomError(
+        nft,
+        "AccessControlUnauthorizedAccount"
+      );
+      await expect(nft.connect(outsider).transferTitle(1n, outsider.address)).to.be.revertedWithCustomError(
+        nft,
         "AccessControlUnauthorizedAccount"
       );
     });
 
     it("reverts URI/title operations on non-existent tokens", async function () {
-      const ebl = await deploy();
-      await expect(ebl.setTokenURI(42n, "x")).to.be.revertedWithCustomError(ebl, "TokenDoesNotExist");
-      await expect(ebl.transferTitle(42n, other.address)).to.be.revertedWithCustomError(ebl, "TokenDoesNotExist");
+      const nft = await deploy();
+      await expect(nft.setTokenURI(42n, "x")).to.be.revertedWithCustomError(nft, "TokenDoesNotExist");
+      await expect(nft.transferTitle(42n, other.address)).to.be.revertedWithCustomError(nft, "TokenDoesNotExist");
     });
 
     it("advertises the ERC-721 and AccessControl interfaces", async function () {
-      const ebl = await deploy();
-      expect(await ebl.supportsInterface("0x01ffc9a7")).to.equal(true); // ERC-165
-      expect(await ebl.supportsInterface("0x80ac58cd")).to.equal(true); // ERC-721
-      expect(await ebl.supportsInterface("0x7965db0b")).to.equal(true); // AccessControl
-      expect(await ebl.supportsInterface("0xffffffff")).to.equal(false);
-    });
-  });
-
-  describe("TradeCertNFT", function () {
-    async function deploy() {
-      const Cert = await ethers.getContractFactory("TradeCertNFT");
-      const cert = await Cert.deploy(admin.address);
-      await cert.waitForDeployment();
-      return cert;
-    }
-
-    it("mints a certificate and burns it on revocation", async function () {
-      const cert = await deploy();
-      await cert.mint(admin.address, "ipfs://cert");
-      expect(await cert.ownerOf(1n)).to.equal(admin.address);
-      expect(await cert.tokenURI(1n)).to.equal("ipfs://cert");
-      expect(await cert.exists(1n)).to.equal(true);
-
-      await cert.revoke(1n);
-      expect(await cert.exists(1n)).to.equal(false);
-    });
-
-    it("restricts mint/revoke and rejects revoking a missing token", async function () {
-      const cert = await deploy();
-      await expect(cert.connect(outsider).mint(outsider.address, "x")).to.be.revertedWithCustomError(
-        cert,
-        "AccessControlUnauthorizedAccount"
-      );
-      await expect(cert.revoke(7n)).to.be.revertedWithCustomError(cert, "TokenDoesNotExist");
-    });
-
-    it("exposes nextTokenId and advertises its interfaces", async function () {
-      const cert = await deploy();
-      expect(await cert.nextTokenId()).to.equal(1n);
-      await cert.mint(admin.address, "ipfs://a");
-      expect(await cert.nextTokenId()).to.equal(2n);
-      expect(await cert.supportsInterface("0x80ac58cd")).to.equal(true); // ERC-721
-      expect(await cert.supportsInterface("0x7965db0b")).to.equal(true); // AccessControl
+      const nft = await deploy();
+      expect(await nft.supportsInterface("0x01ffc9a7")).to.equal(true); // ERC-165
+      expect(await nft.supportsInterface("0x80ac58cd")).to.equal(true); // ERC-721
+      expect(await nft.supportsInterface("0x7965db0b")).to.equal(true); // AccessControl
+      expect(await nft.supportsInterface("0xffffffff")).to.equal(false);
     });
   });
 });

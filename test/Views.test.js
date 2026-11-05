@@ -14,30 +14,7 @@ const {
 describe("Views & convenience getters", function () {
   const fixture = deployTradeChain;
 
-  it("payoutPhaseOf maps each Incoterm to its risk-transfer milestone", async function () {
-    const env = await loadFixture(fixture);
-    expect(await env.core.payoutPhaseOf(Incoterm.EXW)).to.equal(Phase.PickedUp);
-    expect(await env.core.payoutPhaseOf(Incoterm.FOB)).to.equal(Phase.LoadedOnVessel);
-    expect(await env.core.payoutPhaseOf(Incoterm.CIF)).to.equal(Phase.LoadedOnVessel);
-    expect(await env.core.payoutPhaseOf(Incoterm.DDP)).to.equal(Phase.Delivered);
-  });
-
-  it("requiredDocumentsAt returns the per-phase bitmask (0 for non-milestone phases)", async function () {
-    const env = await loadFixture(fixture);
-    const { shipmentId } = await createOrderAndShipment(env, { term: Incoterm.CIF });
-
-    const bit = (d) => 1 << d;
-    const base = bit(DocType.CommercialInvoice) | bit(DocType.PackingList);
-    const loading =
-      base | bit(DocType.InspectionCertificate) | bit(DocType.BillOfLadingOrAWB) | bit(DocType.InsuranceCertificate);
-
-    expect(await env.core.requiredDocumentsAt(shipmentId, Phase.PickedUp)).to.equal(BigInt(base));
-    expect(await env.core.requiredDocumentsAt(shipmentId, Phase.LoadedOnVessel)).to.equal(BigInt(loading));
-    // Created is not a milestone phase → empty mask.
-    expect(await env.core.requiredDocumentsAt(shipmentId, Phase.Created)).to.equal(0n);
-  });
-
-  it("exposes order/shipment/document getters", async function () {
+  it("exposes order/shipment/document/LC getters", async function () {
     const env = await loadFixture(fixture);
     const { orderId, shipmentId } = await createOrderAndShipment(env, { term: Incoterm.FOB });
     await fundLC(env, shipmentId);
@@ -52,26 +29,40 @@ describe("Views & convenience getters", function () {
 
     const doc = await env.core.getDocument(shipmentId, DocType.InspectionCertificate);
     expect(doc.cid).to.equal(CID.inspection);
-    expect(doc.certId).to.equal(1n);
+    expect(doc.verified).to.equal(true);
     expect(await env.core.hasValidDocument(shipmentId, DocType.InspectionCertificate)).to.equal(true);
 
-    // Unknown shipment/document reads return empty values (no revert).
+    const lc = await env.core.getLC(shipmentId);
+    expect(lc.funded).to.equal(true);
+    expect(lc.paid).to.equal(false);
+
+    // Unknown reads return empty values (no revert).
     const empty = await env.core.getDocument(999n, DocType.CommercialInvoice);
     expect(empty.cid).to.equal("");
     expect(await env.core.hasValidDocument(999n, DocType.CommercialInvoice)).to.equal(false);
   });
 
-  it("reverts payoutPhaseOf/requiredDocumentsAt for an unknown shipment", async function () {
+  it("exposes the companion contract addresses", async function () {
     const env = await loadFixture(fixture);
-    await expect(env.core.requiredDocumentsAt(777n, Phase.PickedUp)).to.be.revertedWithCustomError(
-      env.core,
-      "ShipmentNotFound"
-    );
+    expect(await env.core.settlementToken()).to.not.equal(ethers.ZeroAddress);
+    expect(await env.core.shipmentNFT()).to.not.equal(ethers.ZeroAddress);
+    expect(await env.core.shipmentTracker()).to.not.equal(ethers.ZeroAddress);
+    expect(await env.core.documentRegistry()).to.not.equal(ethers.ZeroAddress);
+    expect(await env.core.complianceEngine()).to.not.equal(ethers.ZeroAddress);
+    expect(await env.core.letterOfCredit()).to.not.equal(ethers.ZeroAddress);
   });
 
-  it("rejects deploying the core with a zero settlement token", async function () {
+  it("supports an injected settlement token", async function () {
+    const [admin] = await ethers.getSigners();
+    const USD = await ethers.getContractFactory("TradeUSD");
+    const usd = await USD.deploy(admin.address, "External USD", "xUSD", 6);
+    await usd.waitForDeployment();
+
     const Core = await ethers.getContractFactory("TradeChainCore");
-    await expect(Core.deploy(ethers.ZeroAddress)).to.be.revertedWithCustomError(Core, "ZeroAddress");
+    const core = await Core.deploy(await usd.getAddress());
+    await core.waitForDeployment();
+
+    expect(await core.settlementToken()).to.equal(await usd.getAddress());
   });
 
   it("covers every Incoterm x phase required-document combination", async function () {
@@ -93,18 +84,11 @@ describe("Views & convenience getters", function () {
     }
   });
 
-  it("exercises the token helper views through the deployed core", async function () {
+  it("exposes token helper views through the deployed core", async function () {
     const env = await loadFixture(fixture);
     const { shipmentId } = await createOrderAndShipment(env, { term: Incoterm.FOB });
-    await fundLC(env, shipmentId);
-    await env.core.connect(env.verifier).anchorDocument(shipmentId, DocType.InspectionCertificate, CID.inspection);
-
-    expect(await env.ebl.exists(shipmentId)).to.equal(true);
-    expect(await env.ebl.nextTokenId()).to.equal(shipmentId + 1n);
-    expect(await env.ebl.supportsInterface("0x80ac58cd")).to.equal(true);
-
-    expect(await env.cert.exists(1n)).to.equal(true);
-    expect(await env.cert.nextTokenId()).to.equal(2n);
-    expect(await env.cert.supportsInterface("0x7965db0b")).to.equal(true);
+    expect(await env.nft.exists(shipmentId)).to.equal(true);
+    expect(await env.nft.supportsInterface("0x80ac58cd")).to.equal(true);
+    expect(await env.token.decimals()).to.equal(6);
   });
 });

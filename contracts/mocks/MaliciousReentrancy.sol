@@ -4,12 +4,13 @@ pragma solidity ^0.8.24;
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 /// @title MaliciousReentrancy — adversarial settlement token
-/// @notice A valid ERC-20 that, when the core pays out, re-enters `reclaimExpiredLC` in an attempt
-///         to move funds twice. Used to prove the `nonReentrant` guard + CEI protection.
+/// @notice A valid ERC-20 that, on the first transfer after `arm`, re-enters a target with an
+///         arbitrary payload. Used to prove the core's checks-effects-interactions ordering and
+///         the `nonReentrant` guard on `LetterOfCredit` prevent a double payout.
 /// @dev    Test-only. Excluded from coverage via `.solcover.js`.
 contract MaliciousReentrancy is ERC20 {
-    address public core;
-    uint256 public attackId;
+    address public victim;
+    bytes public payload;
     bool public armed;
     bool public attacked;
     uint256 public reentryCount;
@@ -25,10 +26,10 @@ contract MaliciousReentrancy is ERC20 {
         _mint(to, amount);
     }
 
-    /// @notice Arms the attack: re-enter on the next transfer *out of* the core.
-    function arm(address core_, uint256 id) external {
-        core = core_;
-        attackId = id;
+    /// @notice Arms the attack: re-enter `victim_` with `payload_` on the next transfer.
+    function arm(address victim_, bytes calldata payload_) external {
+        victim = victim_;
+        payload = payload_;
         armed = true;
         attacked = false;
         reentryCount = 0;
@@ -38,10 +39,10 @@ contract MaliciousReentrancy is ERC20 {
     function _update(address from, address to, uint256 value) internal override {
         super._update(from, to, value);
 
-        if (armed && !attacked && core != address(0) && from == core) {
+        if (armed && !attacked && victim != address(0)) {
             attacked = true;
             reentryCount += 1;
-            (bool ok, bytes memory data) = core.call(abi.encodeWithSignature("reclaimExpiredLC(uint256)", attackId));
+            (bool ok, bytes memory data) = victim.call(payload);
             if (!ok) lastRevert = data;
         }
     }

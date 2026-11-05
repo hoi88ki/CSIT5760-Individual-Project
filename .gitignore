@@ -55,9 +55,10 @@ slither-report.md
 gas-report.txt
 
 # --------------------------------
-# DApp (Next.js)
+# DApp (Vite / React)
 # --------------------------------
 dapp/.next/
 dapp/out/
+dapp/dist/
 dapp/node_modules/
 dapp/.env.local

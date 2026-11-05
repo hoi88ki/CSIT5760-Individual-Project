@@ -26,7 +26,9 @@ module.exports = {
   networks: {
     hardhat: {
       chainId: 31337,
-      // Deterministic accounts; a high gas limit keeps E2E flows cheap to script.
+      // Deterministic accounts; a high gas limit keeps E2E flows cheap to script and lets the
+      // core's constructor deploy the six companion contracts even under coverage instrumentation.
+      blockGasLimit: 0x1fffffffffffff,
       allowUnlimitedContractSize: false,
     },
     localhost: {

@@ -1,4 +1,4 @@
-// Shared fixtures and helpers for the TradeChain test-suite.
+// Shared fixtures and helpers for the TradeChain test-suite (7-contract layout).
 const { ethers } = require("hardhat");
 
 // Enum mirrors (Solidity enums are exposed as uint8 by ethers).
@@ -35,53 +35,75 @@ const CID = {
 };
 
 const UNIT = 10n ** 6n; // 6-decimal stablecoin
-const FUND = 1_000_000n * UNIT; // buyer funding
+const FUND = 1_000_000n * UNIT; // demo funding
 const LC = 100_000n * UNIT; // default L/C amount
 
-async function deployTradeChain() {
-  const [admin, seller, buyer, carrier, issuingBank, advisingBank, verifier, outsider] = await ethers.getSigners();
+/**
+ * Deploys the full suite. Pass `settlementToken` to inject an external ERC-20
+ * (e.g. the adversarial token); otherwise the core deploys its own TradeUSD.
+ */
+async function deployTradeChain({ settlementToken } = {}) {
+  const [admin, exporter, importer, bank, logistics, verifier, outsider] = await ethers.getSigners();
 
-  const Token = await ethers.getContractFactory("MockERC20");
-  const token = await Token.deploy("TradeChain USD", "tUSD", 6);
-  await token.waitForDeployment();
+  // Deploy the settlement token first (the core takes it as a constructor argument).
+  let usd = null;
+  let tokenAddr = settlementToken;
+  if (!tokenAddr) {
+    const USD = await ethers.getContractFactory("TradeUSD");
+    usd = await USD.deploy(admin.address, "TradeChain USD", "tUSD", 6);
+    await usd.waitForDeployment();
+    tokenAddr = await usd.getAddress();
+  }
 
   const Core = await ethers.getContractFactory("TradeChainCore");
-  const core = await Core.deploy(await token.getAddress());
+  const core = await Core.deploy(tokenAddr);
   await core.waitForDeployment();
+  const coreAddr = await core.getAddress();
 
-  const roleNames = [
-    "ROLE_SELLER",
-    "ROLE_BUYER",
-    "ROLE_CARRIER",
-    "ROLE_ISSUING_BANK",
-    "ROLE_ADVISING_BANK",
-    "ROLE_VERIFIER",
-  ];
-  const holders = [seller, buyer, carrier, issuingBank, advisingBank, verifier];
+  const roleNames = ["ROLE_EXPORTER", "ROLE_IMPORTER", "ROLE_BANK", "ROLE_LOGISTICS", "ROLE_VERIFIER"];
+  const holders = [exporter, importer, bank, logistics, verifier];
   const roles = await Promise.all(roleNames.map((n) => core[n]()));
   await core.connect(admin).grantRoles(roles, holders.map((h) => h.address));
 
-  const ebl = await ethers.getContractAt("EBLToken", await core.eblToken());
-  const cert = await ethers.getContractAt("TradeCertNFT", await core.certNFT());
+  // Let the core mint demo TradeUSD.
+  if (usd) await usd.connect(admin).grantRole(await usd.MINTER_ROLE(), coreAddr);
 
-  await token.mint(buyer.address, FUND);
-  await token.mint(seller.address, FUND);
-  await token.connect(buyer).approve(await core.getAddress(), ethers.MaxUint256);
-  await token.connect(seller).approve(await core.getAddress(), ethers.MaxUint256);
+  const token = await ethers.getContractAt("TradeUSD", tokenAddr);
+  const nft = await ethers.getContractAt("ShipmentNFT", await core.shipmentNFT());
+  const registry = await ethers.getContractAt("DocumentRegistry", await core.documentRegistry());
+  const tracker = await ethers.getContractAt("ShipmentTracker", await core.shipmentTracker());
+  const compliance = await ethers.getContractAt("ComplianceEngine", await core.complianceEngine());
+  const loc = await ethers.getContractAt("LetterOfCredit", await core.letterOfCredit());
+
+  // Demo funding (only possible when the core deployed its own TradeUSD).
+  let canMint = true;
+  try {
+    await (await core.connect(admin).mint(importer.address, FUND)).wait();
+    await (await core.connect(admin).mint(exporter.address, FUND)).wait();
+  } catch {
+    canMint = false;
+  }
+  if (canMint) {
+    await token.connect(importer).approve(coreAddr, ethers.MaxUint256);
+    await token.connect(exporter).approve(coreAddr, ethers.MaxUint256);
+  }
 
   return {
-    token,
     core,
-    ebl,
-    cert,
+    token,
+    nft,
+    registry,
+    tracker,
+    compliance,
+    loc,
     admin,
-    seller,
-    buyer,
-    carrier,
-    issuingBank,
-    advisingBank,
+    exporter,
+    importer,
+    bank,
+    logistics,
     verifier,
     outsider,
+    canMint,
   };
 }
 
@@ -91,29 +113,49 @@ async function futureDeadline(days = 30) {
 }
 
 /**
- * Buyer opens an order and the named seller creates the shipment.
+ * Importer opens an order and the named exporter creates the shipment.
  * @returns {{ orderId: bigint, shipmentId: bigint }}
  */
 async function createOrderAndShipment(
   env,
-  { buyer = env.buyer, seller = env.seller, term = Incoterm.FOB, lcAmount = LC, deadline, invoiceCID = CID.invoice, packingCID = CID.packing } = {}
+  {
+    importer = env.importer,
+    exporter = env.exporter,
+    term = Incoterm.FOB,
+    lcAmount = LC,
+    deadline,
+    invoiceCID = CID.invoice,
+    packingCID = CID.packing,
+  } = {}
 ) {
   if (deadline === undefined) deadline = await futureDeadline();
-  await env.core.connect(buyer).createOrder(seller.address, term, lcAmount, deadline);
+  await env.core.connect(importer).createOrder(exporter.address, term, lcAmount, deadline);
   const orderId = await env.core.orderCount();
-  await env.core.connect(seller).createShipment(orderId, invoiceCID, packingCID);
+  await env.core.connect(exporter).createShipment(orderId, invoiceCID, packingCID);
   const shipmentId = await env.core.shipmentCount();
   return { orderId, shipmentId };
 }
 
-/** Buy-side: fund the L/C. */
-async function fundLC(env, shipmentId, buyer = env.buyer) {
-  await env.core.connect(buyer).openLetterOfCredit(shipmentId);
+/** Importer escrows the L/C amount. */
+async function fundLC(env, shipmentId, importer = env.importer) {
+  await env.core.connect(importer).openLetterOfCredit(shipmentId);
 }
 
-/** Deposit anchorDocument documents for a term/match. */
+/** Anchor a document via the appropriate role. */
 async function anchor(env, shipmentId, docType, cid, signer) {
   await env.core.connect(signer).anchorDocument(shipmentId, docType, cid);
+}
+
+/** Drive a shipment to the "on vessel" state for the given Incoterm (docs + milestones). */
+async function toLoadedOnVessel(env, id, term) {
+  if (term !== Incoterm.EXW) {
+    await env.core.connect(env.verifier).anchorDocument(id, DocType.InspectionCertificate, CID.inspection);
+  }
+  if (term === Incoterm.CIF) {
+    await env.core.connect(env.verifier).anchorDocument(id, DocType.InsuranceCertificate, CID.insurance);
+  }
+  await env.core.connect(env.logistics).confirmPickup(id);
+  await env.core.connect(env.logistics).confirmVesselLoading(id, CID.bl);
 }
 
 module.exports = {
@@ -130,4 +172,5 @@ module.exports = {
   createOrderAndShipment,
   fundLC,
   anchor,
+  toLoadedOnVessel,
 };

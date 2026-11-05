@@ -1,4 +1,4 @@
-// Verifies the deployed contracts on Etherscan from a deployments/<network>.json record.
+// Verifies the seven deployed contracts on Etherscan from a deployments/<network>.json record.
 //   npx hardhat run scripts/verify.js --network sepolia
 const fs = require("fs");
 const path = require("path");
@@ -11,22 +11,55 @@ async function main() {
 
   console.log(`Verifying on ${network.name}…`);
 
-  await run("verify:verify", {
-    address: dep.core,
-    constructorArguments: [dep.settlementToken],
-  });
-  await run("verify:verify", {
-    address: dep.eblToken,
-    constructorArguments: [dep.core],
-  });
-  await run("verify:verify", {
-    address: dep.tradeCertNFT,
-    constructorArguments: [dep.core],
-  });
-  await run("verify:verify", {
-    address: dep.settlementToken,
-    constructorArguments: ["TradeChain USD", "tUSD", 6],
-  });
+  const targets = [
+    {
+      name: "TradeChainCore",
+      address: dep.core,
+      constructorArguments: [dep.settlementToken],
+    },
+    {
+      name: "ShipmentNFT",
+      address: dep.shipmentNFT,
+      constructorArguments: [dep.core],
+    },
+    {
+      name: "ShipmentTracker",
+      address: dep.shipmentTracker,
+      constructorArguments: [dep.core],
+    },
+    {
+      name: "DocumentRegistry",
+      address: dep.documentRegistry,
+      constructorArguments: [dep.core],
+    },
+    {
+      name: "ComplianceEngine",
+      address: dep.complianceEngine,
+      constructorArguments: [dep.documentRegistry, dep.shipmentTracker],
+    },
+    {
+      name: "LetterOfCredit",
+      address: dep.letterOfCredit,
+      constructorArguments: [dep.core, dep.settlementToken, dep.shipmentTracker, dep.complianceEngine, dep.core],
+    },
+  ];
+
+  if (dep.tokenMeta) {
+    targets.push({
+      name: "TradeUSD",
+      address: dep.settlementToken,
+      constructorArguments: [dep.tokenMeta.admin, dep.tokenMeta.name, dep.tokenMeta.symbol, dep.tokenMeta.decimals],
+    });
+  }
+
+  for (const t of targets) {
+    console.log(`  → ${t.name} ${t.address}`);
+    try {
+      await run("verify:verify", { address: t.address, constructorArguments: t.constructorArguments });
+    } catch (err) {
+      console.warn(`    (skipped ${t.name}: ${err.message.split("\n")[0]})`);
+    }
+  }
 
   console.log("Verification complete.");
 }
