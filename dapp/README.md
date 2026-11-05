@@ -1,36 +1,53 @@
-# TradeChain — Role Dashboard
+# TradeChain — Role Dashboard (React + Vite)
 
-A minimal, single-page interface for driving TradeChain (ethers v6, **no build step**).
+A role-based interface for driving TradeChain on a local Hardhat node or Sepolia, built with
+**React (Vite) + Ethers.js v6 + MetaMask**.
 
 ## Run it
 
 ```bash
 # terminal 1 — local chain + deployment
 npx hardhat node
-npx hardhat run scripts/deploy.js --network localhost     # copy the core address
+npx hardhat run scripts/deploy.js --network localhost     # copy the TradeChainCore address
 
 # terminal 2 — dashboard
-node dapp/server.js        # → http://localhost:5173
+cd dapp
+npm install
+npm run dev        # → http://localhost:5173
 ```
 
 1. Open <http://localhost:5173>.
 2. Paste the **TradeChainCore** address and click **Connect / Load**.
-3. Pick the **active account** from the dropdown. With a local node, `eth_accounts`
-   returns the six unlocked role wallets (Seller, Buyer, Carrier, Issuing bank,
-   Advising bank, Verifier) — no private keys needed.
-4. Use the numbered panels: order → shipment → documents → milestones.
+3. Choose the **active account** (with a local node, `eth_accounts` returns the unlocked role
+   wallets — Exporter, Importer, Bank, Logistics, Verifier — no private keys needed).
+4. Walk the numbered panels: order → shipment → documents/funding → milestones.
 
-> With **MetaMask** available, the page uses it automatically; switch MetaMask to
-> the Hardhat/Sepolia network and use the relevant role wallet.
+> With **MetaMask** the page uses it automatically; switch MetaMask to the Hardhat/Sepolia
+> network and select the relevant role wallet.
 
-## Panels
+## Off-chain documents (IPFS)
 
-| Panel | Functions |
-|-------|-----------|
-| **1 · Order & Shipment** | `createOrder` (Buyer), `createShipment` (Seller) |
-| **2 · Documents & Funding** | token `approve`, `openLetterOfCredit` (Buyer), `anchorDocument` (role-gated) |
-| **3 · Milestones** | `confirmPickup` / `confirmVesselLoading` (Carrier), `payCustomsDuty`, `confirmFinalDelivery` (Buyer), `reclaimExpiredLC`, `forceFinalizeDelivery` |
-| **Shipment viewer** | live phase, flags, document validity |
+The upload buttons default to a **local kubo** node through its HTTP API
+(`http://127.0.0.1:5001`): run `ipfs daemon` first. Override the endpoint with
+`VITE_KUBO_API`. To use hosted Pinata instead, set `VITE_PINATA_JWT` and build the app; the
+`uploadFile()` helper in `src/ipfs.js` selects the provider. You can also upload out-of-band:
 
-The dashboard calls the real on-chain contract; it does no off-chain validation beyond
-formatting. Documents live on IPFS — use `node scripts/ipfs-add.js <file>` to obtain a CID.
+```bash
+node scripts/ipfs-add.js path/to/document.pdf          # local kubo
+node scripts/ipfs-add.js path/to/document.pdf --pinata # hosted Pinata
+```
+
+## Build
+
+```bash
+npm run build      # static bundle in dist/
+npm run preview    # serve the build on :5173
+```
+
+## Configuration (optional env)
+
+| Variable | Purpose |
+|----------|---------|
+| `VITE_RPC_URL` | JSON-RPC endpoint used when MetaMask is absent (default `http://127.0.0.1:8545`). |
+| `VITE_KUBO_API` | Local kubo HTTP API base (default `http://127.0.0.1:5001`). |
+| `VITE_PINATA_JWT` | Pinata JWT for hosted uploads. |
