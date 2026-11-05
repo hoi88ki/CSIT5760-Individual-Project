@@ -25,11 +25,11 @@ npm run dev        # → http://localhost:5173
 > With **MetaMask** the page uses it automatically; switch MetaMask to the Hardhat/Sepolia
 > network and select the relevant role wallet.
 
-## Off-chain documents (consortium IPFS, one node per role)
+## Off-chain documents (per-role IPFS)
 
-Each role runs its **own kubo node**; the **IPFS node** field in panel 2 sets that role's node
-endpoint (default `http://127.0.0.1:5001`, override the default with `VITE_KUBO_API`). Run one
-kubo daemon per role with distinct API ports, e.g.:
+Each role runs its **own kubo node** and keeps its own copy; the **IPFS node** field sets the node
+endpoint for both upload and retrieval (default `http://127.0.0.1:5001`, override the default with
+`VITE_KUBO_API`). Run one kubo daemon per role with distinct API ports, e.g.:
 
 ```bash
 IPFS_PATH=~/.ipfs-exporter ipfs daemon   # API :5001  (exporter)
@@ -37,27 +37,30 @@ IPFS_PATH=~/.ipfs-importer ipfs daemon   # API :5011  (importer)
 IPFS_PATH=~/.ipfs-bank     ipfs daemon   # API :5021  (bank)
 ```
 
-The flow is: the issuing role uploads to **its** node → the CID is anchored on-chain
-(`DocumentRegistry`) → the CID is **replicated/pinned** to the other nodes so any party can
-retrieve the bytes. Because CIDs are content-addressed, every replica serves the same CID, so
-there is exactly **one CID per `(shipment, DocType)`** and **no contract change** is needed.
+The flow is: the issuing role uploads to **its** node (it keeps a copy) → the CID is anchored
+on-chain (`DocumentRegistry`) → **any involved party reads the document through the DApp** by
+pointing the *Document viewer* at the node holding the copy. A counterparty can also pull its own
+copy onto its node so it stays available. Because CIDs are content-addressed, every copy serves the
+same CID, so there is exactly **one CID per `(shipment, DocType)`** and **no contract change** is
+needed.
 
-Out-of-band uploads:
+Out-of-band upload / read / copy:
 
 ```bash
 node scripts/ipfs-add.js path/to/document.pdf                                   # default node
 node scripts/ipfs-add.js path/to/document.pdf --api /ip4/127.0.0.1/tcp/5011     # a specific node
-node scripts/ipfs-pin.js bafy... --api /ip4/127.0.0.1/tcp/5011                  # replicate across nodes
+ipfs cat bafy... --api /ip4/127.0.0.1/tcp/5011                                  # read from a role node
+node scripts/ipfs-pin.js bafy... --api /ip4/127.0.0.1/tcp/5011                  # keep your own copy
 node scripts/ipfs-add.js path/to/document.pdf --pinata                          # optional hosted
 ```
 
-Full setup (per-role nodes, private swarm key, pin/retrieve flow):
+Full setup (per-role nodes, upload/retrieve flow):
 [`../docs/IPFS_CONSORTIUM.md`](../docs/IPFS_CONSORTIUM.md).
 
-> **Limitations.** CIDs are public on-chain, so per-role nodes give *ownership/availability*, not
-> *confidentiality*: use a **private swarm** and/or encrypt before pinning if documents are
-> sensitive. And replication is required for availability — an unpinned CID is unfetchable once
-> the only holding node goes offline.
+> **Limitations.** CIDs are public on-chain, so per-role nodes give *consortium retrieval by
+> convention*, not *confidentiality*: restrict the swarm or encrypt before upload if documents are
+> sensitive. And a copy must exist somewhere — a CID whose only holder is offline (and that no
+> counterparty copied) cannot be fetched.
 
 ## Build
 

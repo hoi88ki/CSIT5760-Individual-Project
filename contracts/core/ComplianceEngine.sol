@@ -6,10 +6,9 @@ import {DocumentRegistry} from "./DocumentRegistry.sol";
 import {ShipmentTracker} from "./ShipmentTracker.sol";
 
 /// @title ComplianceEngine — Incoterm-aware document compliance rules
-/// @notice View-only rule engine. The "six required documents" are treated as the *universe*;
-///         the actual mandatory set is a function of the Incoterm and the milestone, which fixes
-///         the updated proposal's fixed-six-document discrepancy (e.g. CIF needs insurance, DDP
-///         needs customs clearance, EXW/FOB do not need insurance).
+/// @notice View-only rule engine. The seven `DocType`s are the *universe*; the actual mandatory set
+///         is a function of the Incoterm and the milestone (e.g. CIF needs insurance, DDP needs
+///         customs clearance, EXW/FOB do not need insurance).
 /// @dev    Reads `DocumentRegistry` (document validity) and `ShipmentTracker` (phase/term).
 contract ComplianceEngine {
     DocumentRegistry public immutable registry;

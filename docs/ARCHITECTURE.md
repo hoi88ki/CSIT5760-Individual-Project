@@ -84,22 +84,23 @@ phase and reverts with `MissingMandatoryDocument` on the first gap.
    holds every mandatory document, and (DDP) has duty paid.
 3. Sets `paid`, then `safeTransfer`s the L/C to the exporter (and the duty to the treasury).
 
-## 6. Off-chain layer — consortium IPFS (one node per role)
+## 6. Off-chain layer — per-role IPFS (one node per participant)
 
 Documents and certificate metadata live on **IPFS**. Each participant (exporter, importer, bank,
-logistics, verifier) runs its **own kubo node**; the issuing role uploads to its own node and the
-resulting **CID** is anchored on-chain. The CID is then **replicated/pinned** to the counterparties'
-nodes (optionally via a private swarm and/or IPFS Cluster). Because CIDs are content-addressed,
-every replica serves the same bytes, so there is exactly **one CID per `(shipment, DocType)`** and
-**no contract change** is needed for this topology.
+logistics, verifier) runs its **own kubo node** and **keeps its own copy**; the issuing role uploads
+to its own node and the resulting **CID** is anchored on-chain. Any involved party can then read the
+document through the DApp by pointing at the node that holds a copy. Because CIDs are
+content-addressed, every copy serves the same bytes, so there is exactly **one CID per
+`(shipment, DocType)`** and **no contract change** is needed for this topology.
 
 Only CIDs are stored on-chain, so gas is constant-bounded per document and independent of file
-size. `scripts/ipfs-add.js` (with `--api <multiaddr>`) uploads to a role's node,
-`scripts/ipfs-pin.js` replicates a CID across nodes, and the DApp's per-role node field
-(`src/ipfs.js`) targets the active role's node. The React DApp reads on-chain state and calls the
-core directly. Setup and the pin/retrieve flow are in [`IPFS_CONSORTIUM.md`](./IPFS_CONSORTIUM.md).
+size. `scripts/ipfs-add.js` (with `--api <multiaddr>`) uploads to a role's node; the DApp's
+per-role node field (`src/ipfs.js`) targets the active role's node for both **upload** and
+**retrieval** (`ipfs cat`); and `scripts/ipfs-pin.js` lets a counterparty keep its own copy of a
+CID. The React DApp reads on-chain state and calls the core directly. Setup and the
+upload/retrieve flow are in [`IPFS_CONSORTIUM.md`](./IPFS_CONSORTIUM.md).
 
-**Limitations.** CIDs are public on-chain, so per-role nodes **plus a private swarm** give
-consortium-only retrieval, not cryptographic secrecy — encrypt before pinning if stronger
-confidentiality is required. Availability depends on replication: an unpinned CID is unfetchable
-once its only holder is offline.
+**Limitations.** CIDs are public on-chain, so per-role nodes give *consortium-only retrieval* by
+convention, not cryptographic secrecy — restrict the swarm or encrypt the file before upload if
+stronger confidentiality is required. Availability depends on a copy existing somewhere: a CID whose
+only holder is offline (and that no counterparty copied) cannot be fetched.

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { BrowserProvider, JsonRpcProvider, Contract, MaxUint256, isAddress, parseUnits, formatUnits } from "ethers";
 import { CORE_ABI, ERC20_ABI, INCOTERMS, PHASES, DOC_TYPES } from "./abi.js";
-import { uploadFile } from "./ipfs.js";
+import { uploadFile, fetchFromKubo } from "./ipfs.js";
 
 const rpc = import.meta.env.VITE_RPC_URL || "http://127.0.0.1:8545";
 
@@ -21,6 +21,7 @@ export default function App() {
   const [doc, setDoc] = useState({ shipmentId: "1", docType: "3", cid: "" });
   const [mile, setMile] = useState({ shipmentId: "1", blCid: "" });
   const [duty, setDuty] = useState({ shipmentId: "1", amount: "0" });
+  const [viewer, setViewer] = useState({ cid: "", node: "http://127.0.0.1:5001" });
 
   const append = (msg) => setLog((l) => `${new Date().toLocaleTimeString()}  ${msg}\n${l}`);
 
@@ -91,6 +92,15 @@ export default function App() {
     await run(`ipfs add ${file.name}`, async () => {
       const cid = await uploadFile(file, { provider, apiBase: ipfs.node });
       setter((f) => ({ ...f, [key]: cid }));
+      return null;
+    });
+  }
+
+  // Any involved party can read a document by CID from the role node that holds a copy.
+  async function viewDocument() {
+    await run(`ipfs cat ${viewer.cid || "…"}`, async () => {
+      const blob = await fetchFromKubo(viewer.cid, viewer.node);
+      window.open(URL.createObjectURL(blob), "_blank");
       return null;
     });
   }
@@ -216,8 +226,9 @@ export default function App() {
           <label>IPFS node (this role's kubo API)</label>
           <input name="node" value={ipfs.node} onChange={set(setIpfs)} placeholder="http://127.0.0.1:5001" />
           <p className="hint">
-            Consortium model: each role runs its own kubo node (e.g. exporter :5001, importer :5011, bank
-            :5021). CIDs are anchored on-chain and replicated/pinned across nodes.
+            Per-role IPFS model: each role runs its own kubo node (e.g. exporter :5001, importer :5011,
+            bank :5021) and keeps its own copy. Any involved party can read a document by its CID from
+            the node that holds it — see the document viewer below.
           </p>
           <button onClick={() => run("approve token", approveToken)}>Approve TradeUSD</button>
           <button
@@ -291,6 +302,25 @@ export default function App() {
           <h2>Shipment viewer</h2>
           <button onClick={refresh}>Load shipment</button>
           <pre>{shipment}</pre>
+        </section>
+
+        <section>
+          <h2>Document viewer (any role)</h2>
+          <label>IPFS node holding the copy</label>
+          <input
+            name="node"
+            value={viewer.node}
+            onChange={set(setViewer)}
+            placeholder="http://127.0.0.1:5001"
+          />
+          <label>Document CID (anchored on-chain)</label>
+          <input name="cid" value={viewer.cid} onChange={set(setViewer)} placeholder="bafy…" />
+          <button onClick={viewDocument}>Open document</button>
+          <p className="hint">
+            Point at the role node that holds the copy (e.g. the exporter's :5001) and open the CID that
+            was anchored via <code>DocumentRegistry</code>. The CID guarantees integrity regardless of
+            which node serves the bytes.
+          </p>
         </section>
 
         <section className="logs">

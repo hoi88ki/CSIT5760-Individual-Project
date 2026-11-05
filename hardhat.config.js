@@ -42,9 +42,9 @@ module.exports = {
     },
   },
   etherscan: {
-    apiKey: {
-      sepolia: ETHERSCAN_API_KEY,
-    },
+    // A single Etherscan.io API key (Etherscan V2). The v2 endpoint resolves the chain
+    // from the network, so the old per-network mapping is no longer required.
+    apiKey: ETHERSCAN_API_KEY,
   },
   gasReporter: {
     enabled: REPORT_GAS === "true",

@@ -4,10 +4,9 @@
 //   node scripts/ipfs-add.js path/to/invoice.pdf --api /ip4/127.0.0.1/tcp/5011
 //   node scripts/ipfs-add.js path/to/invoice.pdf --pinata              # hosted (PINATA_JWT)
 //
-// Consortium model (decision B.8): each role runs its own kubo node. Use `--api` to target the
-// active role's node (or set IPFS_PATH before running so the CLI uses that node's repo/config).
-// Only the CID is anchored on-chain; content addressing means any node that pins the bytes serves
-// the same CID.
+// Per-role model: each participant runs its own kubo node. Use `--api` to target the active role's
+// node (or set IPFS_PATH before running so the CLI uses that node's repo/config). Only the CID is
+// anchored on-chain; content addressing means any node that holds the bytes serves the same CID.
 const { execFileSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");

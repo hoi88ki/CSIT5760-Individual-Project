@@ -1,11 +1,12 @@
-# TradeChain — Consortium IPFS (one node per role)
+# TradeChain — Per-role IPFS (one node per participant)
 
-Decision **B.8**: each participant runs its **own** kubo node, optionally in a **private swarm**;
-documents are addressed by CID and **manually pinned** on the nodes that need them.
+Each participant runs its **own** kubo node and **keeps its own copy** of the documents it handles.
+Documents are addressed by **CID**, so any involved party can retrieve a document through the DApp
+by pointing at the node that holds a copy. Only the CID is anchored on-chain.
 
 The blockchain is unchanged by this topology: `DocumentRegistry` stores **one CID per
 `(shipment, DocType)`** (plus issuer, timestamp, verification status). Content addressing means
-every replica of the same file yields the same CID, so no per-role on-chain records are required.
+every copy of the same file yields the same CID, so no per-role on-chain records are required.
 
 ## 1. Roles, nodes and ports (single-machine demo)
 
@@ -17,8 +18,7 @@ every replica of the same file yields the same CID, so no per-role on-chain reco
 | Logistics | `./.ipfs-logistics` | 5031 | `/ip4/127.0.0.1/tcp/5031` |
 | Verifier | `./.ipfs-verifier` | 5041 | `/ip4/127.0.0.1/tcp/5041` |
 
-Initialise and start each node with the API and gateway ports set in its config (kubo uses only
-one API port per node; run one daemon per role):
+Initialise and start each node with its own API and gateway ports (one daemon per role):
 
 ```bash
 IPFS_PATH=./.ipfs-exporter ipfs init
@@ -29,51 +29,38 @@ IPFS_PATH=./.ipfs-exporter ipfs daemon
 
 > On Windows PowerShell use `$env:IPFS_PATH="./.ipfs-exporter"` before the `ipfs` command.
 
-## 2. Optional private swarm (confidentiality)
+## 2. Daily flow
 
-A **private swarm** (`swarm.key`) lets only consortium members retrieve content. Generate one key
-and copy the identical `swarm.key` into every node's repo, then remove the public bootstrap peers:
-
-```bash
-# 1) 64 hex chars
-python -c "import secrets;print(secrets.token_hex(32))"   # or: openssl rand -hex 32
-
-# 2) create <IPFS_PATH>/swarm.key
-#    /key/swarm/psk/1.0.0/
-#    /base16/
-#    <the 64 hex chars>
-
-# 3) per node: drop public bootstrappers and reconnect to peers only
-ipfs bootstrap rm --all
-```
-
-**Confidentiality caveat.** CIDs are written to a public chain, so per-role nodes + a private
-swarm give *consortium-only retrieval*, not cryptographic secrecy: anyone who (a) is in the swarm
-or (b) learns the bytes can fetch them. Stronger confidentiality would require **encrypting before
-pinning** (out of scope per the earlier "no encryption" decision).
-
-## 3. Daily flow
-
-1. **Issuing role** uploads to its own node:
+1. **Issuing role uploads to its own node** (it now keeps a copy):
    ```bash
    node scripts/ipfs-add.js invoice.pdf --api /ip4/127.0.0.1/tcp/5001
    ```
    (The DApp does the same via the **IPFS node** field in panel 2.)
 2. **Anchor the CID on-chain** (`createShipment` / `anchorDocument` / `confirmVesselLoading`).
-3. **Replicate (pin) the CID** on the nodes that need it:
+3. **Any involved party reads the document through the DApp.** In the **Document viewer** panel,
+   point the *IPFS node* field at the node that holds the copy (e.g. the exporter's `:5001`) and
+   open the anchored CID:
+   ```bash
+   # underlying call the DApp makes
+   ipfs cat bafy... --api /ip4/127.0.0.1/tcp/5001
+   # or via the gateway: http://127.0.0.1:8080/ipfs/bafy...
+   ```
+4. **Keep your own copy** (optional, for resilience): a counterparty that needs a document can pull
+   it onto its own node so it stays available even if the origin node goes offline.
    ```bash
    node scripts/ipfs-pin.js bafy... --api /ip4/127.0.0.1/tcp/5011 --api /ip4/127.0.0.1/tcp/5021
    ```
-4. **Retrieve** from any node; the CID proves integrity:
-   ```bash
-   ipfs cat bafy... --api /ip4/127.0.0.1/tcp/5011
-   # or the gateway: http://127.0.0.1:8081/ipfs/bafy...
-   ```
 
-## 4. Availability & limits
+## 3. Availability & confidentiality
 
-- **Replication is required for availability.** An unpinned CID becomes unfetchable once its only
-  holder goes offline (the on-chain anchor survives, the document does not).
-- **No single authoritative node.** The CID is the authority; any correct replica is valid.
+- **The CID is the authority.** Any node holding the same bytes serves the same CID; integrity is
+  guaranteed regardless of which node responds. No single authoritative node.
+- **Availability depends on the copy existing somewhere.** If the only holder of a CID goes offline
+  and no counterparty kept a copy, the on-chain anchor survives but the file cannot be fetched —
+  make extra copies for long-lived documents.
+- **Confidentiality.** CIDs are written to a public chain, so the model gives *consortium-only
+  retrieval* by convention, not cryptographic secrecy: anyone who learns the bytes can fetch them.
+  Stronger confidentiality would require restricting the swarm (`swarm.key`) or encrypting before
+  upload — both optional and out of scope for this prototype.
 - **Pinata** (a single hosted provider) is not part of this model; it remains only an optional
   convenience via `ipfs-add.js --pinata`.

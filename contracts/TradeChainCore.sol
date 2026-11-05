@@ -13,8 +13,9 @@ import {ComplianceEngine} from "./core/ComplianceEngine.sol";
 import {LetterOfCredit} from "./core/LetterOfCredit.sol";
 
 /// @title TradeChainCore — central coordinator and single user entry point
-/// @notice Owns the `AccessControl` role authority, deploys/wires the five companion contracts and
-///         orchestrates the full trade workflow (orders, documents, milestones, settlement).
+/// @notice Owns the `AccessControl` role authority, deploys/wires the four companion contracts,
+///         receives the `TradeUSD` settlement token and orchestrates the full trade workflow
+///         (orders, documents, milestones, settlement).
 /// @dev    Companion contracts accept calls only from this core (`onlyCore`) and expose public
 ///         views, so the DApp interacts with one address while six contracts are deployed.
 contract TradeChainCore is AccessControl, IERC721Receiver {

@@ -53,7 +53,8 @@ deployed).
 
 - **No dispute module** (A.2) — removed from the design and code.
 - **No `Pausable`** (B.7) — removed; settlement safety relies on `nonReentrant` + CEI + enum guards.
-- **Consortium IPFS** (B.8) — one kubo node per role, private swarm + manual pin; Pinata is optional.
+- **Per-role IPFS** (B.8) — one kubo node per participant; each role keeps its own copy and any
+  involved party can read a document by CID through the DApp; Pinata is optional.
 - **Verifier / Authorities** modelled as an authorised address whose certificate content lives on
   IPFS (A.3).
 - **Per-Incoterm compliance** (A.4) instead of a fixed six-document gate.

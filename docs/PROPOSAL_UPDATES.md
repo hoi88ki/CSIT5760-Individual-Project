@@ -52,20 +52,21 @@ Also add a phrase to §5 `DocumentRegistry.sol`: "per `DocType`, records the CID
 **Where:** §7 Security Considerations, last row mitigation list (the "Malicious receiver hooks …" row).
 **Change:** delete "**Pausable circuit breakers**" from the mitigation list (the prototype relies on `nonReentrant` + CEI + enum state guards; a pausable admin could instead *cause* a settlement stall).
 
-### B.8 — IPFS topology & confidentiality  *(consortium, one node per role)*
+### B.8 — IPFS topology  *(one node per role)*
 **Where:** §6 Technology Stack, row **"IPFS …"**; the **React (Vite)** row; §4 *Trade Document Management*; §5 `DocumentRegistry.sol`; §9 Phase 3.
-**Change to:** replace the single-node / Pinata wording with a **per-role consortium** model:
-> "**IPFS — one node per role (optional private swarm).** Each participant (exporter, importer, bank, logistics, verifier) runs its own kubo node. The issuing role adds the document to its own node; the on-chain record stores only the **CID** (one CID per `(shipment, DocType)`). The CID is then **replicated/pinned** to the counterparties' nodes (via a private swarm and/or IPFS Cluster / explicit pinning), so any replica can serve the same bytes. Because CIDs are content-addressed, integrity is guaranteed regardless of which node responds, and *no per-role on-chain records are needed*."
+**Change to:** replace the single-node / Pinata wording with a **per-role** model:
+> "**IPFS — one node per role.** Each participant (exporter, importer, bank, logistics, verifier) runs its own kubo node and keeps its own copy. The issuing role adds the document to its own node; the on-chain record stores only the **CID** (one CID per `(shipment, DocType)`). Any involved party can read the document by its CID through the DApp; because CIDs are content-addressed, integrity is guaranteed regardless of which node responds, and *no per-role on-chain records are needed*."
 
 **Confirmed design (see [`IPFS_CONSORTIUM.md`](./IPFS_CONSORTIUM.md)):**
-- **Replication = shared private swarm + manual pin.** Each role runs its own kubo node; nodes join
-  a **private swarm** (`swarm.key`), and after a CID is anchored on-chain every counterparty that
-  needs the document runs `ipfs pin add <cid>` (helper: `scripts/ipfs-pin.js`).
-- **Confidentiality = private swarm only.** Retrieval is restricted to consortium members. This is
-  *not* cryptographic secrecy: CIDs are public on-chain, so a leaked key or the bytes themselves
-  defeat it. Encryption before pinning is out of scope.
-- **Availability requires pinning** — an unpinned CID is unfetchable once its only holder is offline.
-- **Pinata is dropped** in this model (single hosted provider); it remains an optional convenience.
+- **Each role keeps its own copy.** Each role runs its own kubo node; a counterparty that needs a
+  document can pull it onto its own node with `ipfs pin add <cid>` (helper: `scripts/ipfs-pin.js`).
+- **Access is through the DApp.** Any involved party reads a document by its CID by pointing the
+  DApp's *Document viewer* at the node that holds a copy.
+- **Confidentiality is out of scope.** CIDs are public on-chain; the model gives consortium retrieval
+  by convention, not cryptographic secrecy. Restricting the swarm or encrypting is optional.
+- **Availability** depends on a copy existing somewhere — a CID whose only holder is offline (and
+  that no counterparty copied) cannot be fetched.
+- **Pinata is optional** (single hosted provider); it is not part of this model.
 - **No contract change is required** — the contracts store only CIDs and are agnostic to the topology.
 
 **Other values confirmed with the author:** the proposal should state **≥ 90 % statement/branch
@@ -111,10 +112,10 @@ Optional: trim §2 and the bullet lists to fit "2–3 pages excluding references
 
 ## Also update §5.1 "Architecture or Workflow"
 
-The section is currently **empty**. Insert the two diagrams from
-[`docs/diagrams/TradeChain.drawio`](./diagrams/TradeChain.drawio) (pages **Architecture** and
-**Workflow**), e.g. exported to PNG and embedded, or add: *"Architecture and workflow diagrams:
-`docs/diagrams/TradeChain.drawio`."*
+The section now holds the **Architecture** diagram from
+[`docs/diagrams/TradeChain.drawio`](./diagrams/TradeChain.drawio) (exported to
+`TradeChain-Architecture.png`). The **Workflow** diagram is intentionally deferred to the final
+report.
 
 ## Reference implementation status
 
@@ -154,7 +155,7 @@ below (the diagram already shows **6 contracts**).
 | M5 | §9 **Phase 3** | "Deploy and verify all **7** contracts" → "all **6** contracts". |
 | M6 | §7 **Smart Contract Vulnerabilities** row | "cross-contract calls to **`ShipmentNFT.sol`** (ERC-721)" → "**`ShipmentTracker.sol`** (ERC-721 title)". |
 | M7 | §4 **Shipment Tracking and Ownership Management** bullet | Append: "*The title token lives inside `ShipmentTracker` (`tokenId = shipmentId`); holders cannot transfer it directly.*" |
-| M8 | §5.1 | Insert the updated **Architecture** and **Workflow** pages (now 6 contracts). |
+| M8 | §5.1 | Insert the updated **Architecture** diagram (6 contracts); the Workflow diagram is deferred to the report. |
 
 ## Review of the updated proposal (v4)
 
@@ -171,27 +172,21 @@ below (the diagram already shows **6 contracts**).
 | R8 | §7 *Asset Ownership Integrity* — e-B/L | ✅ fixed |
 | R9 | §4 *Incoterms Enforcement* — title transfer | ✅ fixed |
 
-### Still outstanding in v4
+### v4 review items — now resolved in the final proposal
 
-| # | Location | What to change |
-|---|----------|----------------|
-| V4-1 | §9 **Phase 2** deliverable | "≥ **85 %** branch coverage, 0 **high/medium** Slither findings" → "≥ **90 %** branch coverage, 0 **High** findings (Medium triaged)". |
-| V4-2 | §6 **IPFS** row | "IPFS (**local kubo node**)" → "IPFS (**per-role kubo nodes**; private swarm + manual pin)". Keep the rationale about CIDs. |
-| V4-3 | §9 **Phase 3** | "off-chain **6-document** uploads" → "off-chain **7-document** uploads" (the registry has seven `DocType`s). |
-| V4-4 | §5.1 *Architecture or Workflow* | Still empty — insert the two pages of [`docs/diagrams/TradeChain.drawio`](./diagrams/TradeChain.drawio). |
-| V4-5 | §8 *Asset Settlement and Ownership Testing* | "**shipment ownership** is transferred via NFT" → "the **document of title** is transferred via the ERC-721 token". |
-| V4-6 | §4 *On-Chain Data* | "**Shipment NFT ownership**" → "**e-B/L title ownership (ERC-721, in `ShipmentTracker`)**". |
-| V4-7 | §5 `DocumentRegistry.sol` | "IPFS **hashes**" → "IPFS **CIDs (CIDv1)**" (precision). |
-| V4-8 | §5 `LetterOfCredit.sol` | "cancellation processes" → "**expiry refund (reclaim)**" (matches the implemented path). |
-| V4-9 | §9 **Phase 2** deliverable | "gas benchmark report" is listed but no such artefact exists yet — either produce one (`hardhat-gas-reporter`) or drop it. |
-| V4-10 | §4 / §5 **"negotiable"** | The token is **not** negotiable in this prototype (only the core can transfer it). Either drop "negotiable" or add: "*negotiability is restricted in this prototype: the contract, not the holder, releases title at the settlement milestone.*" |
+The author applied every v4 item. The final proposal now reads: §9 Phase 2 = "≥ 90 %
+branch coverage, 0 high Slither findings" (gas-benchmark claim dropped); §6 = "IPFS (per-role kubo
+nodes)"; §9 Phase 3 = "per-role kubo IPFS nodes ... off-chain document uploads"; §5.1 = the
+Architecture diagram; §8 = "the document of title is transferred via NFT"; §4 On-Chain Data =
+"e-B/L title ownership"; §5 = "IPFS CIDs" and "expiry refund"; "negotiable" removed; title
+transfers described as holder-restricted.
 
 ### Clarifications — resolved
 
 | # | Question | Decision |
 |---|----------|----------|
-| 1 | IPFS replication | **Private swarm + manual pin** (`scripts/ipfs-pin.js`); no IPFS Cluster. |
-| 2 | Confidentiality | **Private swarm only** (consortium members); encryption out of scope. |
+| 1 | IPFS replication | **Per-role kubo nodes; each role keeps its own copy.** Any involved party reads a document by CID through the DApp; a counterparty may keep an extra copy with `scripts/ipfs-pin.js`. |
+| 2 | Confidentiality | Out of scope (public CIDs); the model gives consortium retrieval by convention, not cryptographic secrecy. Restricting the swarm / encrypting is optional. |
 | 3 | Quality bar | **≥ 90 % branch/statement coverage, 0 High Slither findings** (Medium triaged). Implemented: 100 % statements / **92.74 % branch** / 100 % functions / 100 % lines; CI fails on High. |
 | 4 | Document count | **Seven** `DocType`s incl. **Customs Clearance**. |
 | 5 | `ShipmentTracker` + `ShipmentNFT` | **Merge into one** (`tokenId == shipmentId`); title transfer gated in `_update`. |

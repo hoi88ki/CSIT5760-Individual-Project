@@ -1,11 +1,13 @@
-// Off-chain document upload for the consortium IPFS model (decision B.8).
+// Off-chain document storage for the per-role IPFS model.
 //
-// Each role runs its OWN kubo node, so the upload target is configurable. The default is the
-// local node's HTTP API; set VITE_KUBO_API (or pass an explicit `apiBase`) to point at the
-// active role's node, e.g. http://127.0.0.1:5011 for a second node.
+// Each role runs its OWN kubo node, so both the upload target and the retrieval target are
+// configurable. A role keeps its own copy of the documents it handles, and any involved party can
+// `cat` the document by its CID from whichever node holds it (point the "IPFS node" field at that
+// role's node). The default is the local node's HTTP API; set VITE_KUBO_API (or pass an explicit
+// `apiBase`) to point at another role's node, e.g. http://127.0.0.1:5011.
 //
 // Only the resulting CID is anchored on-chain (DocumentRegistry). Because CIDs are
-// content-addressed, any node that pins the same bytes serves the same CID — no contract change
+// content-addressed, any node that holds the same bytes serves the same CID — no contract change
 // is needed and there is exactly one CID per (shipment, DocType).
 
 const DEFAULT_KUBO_API = import.meta.env.VITE_KUBO_API || "http://127.0.0.1:5001";
@@ -23,7 +25,20 @@ export async function uploadToKubo(file, apiBase = DEFAULT_KUBO_API) {
   return json.Hash;
 }
 
-/** Optional hosted Pinata path (single provider; not part of the consortium model). */
+/**
+ * Fetches a document by CID from a kubo node (any node that holds a copy) and returns a Blob.
+ * This is what lets a counterparty read a document someone else uploaded, entirely through the DApp.
+ */
+export async function fetchFromKubo(cid, apiBase = DEFAULT_KUBO_API) {
+  const res = await fetch(`${apiBase.replace(/\/$/, "")}/api/v0/cat?arg=${encodeURIComponent(cid)}`, {
+    method: "POST",
+  });
+  if (!res.ok)
+    throw new Error(`kubo retrieve failed (${res.status}). Is the node holding ${cid} reachable at ${apiBase}?`);
+  return res.blob();
+}
+
+/** Optional hosted Pinata path (single provider; not part of the per-role model). */
 export async function uploadToPinata(file) {
   const jwt = import.meta.env.VITE_PINATA_JWT;
   if (!jwt) throw new Error("VITE_PINATA_JWT is not set.");

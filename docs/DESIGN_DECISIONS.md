@@ -1,8 +1,8 @@
 # TradeChain — Design Decisions
 
-Records the significant design choices and their rationale. Items marked **[Qn]** come from the
-earlier reviewer Q&A (`QUESTIONS.md`); items marked **[Pn]** respond to the proposal feedback in
-`docs/PROPOSAL_UPDATES.md`.
+Records the significant design choices and their rationale. Items marked **[Qn]** are earlier
+design-review questions; items marked **[Pn]** respond to the proposal feedback in
+`docs/PROPOSAL_UPDATES.md`. The change history is in `CHANGES.md`.
 
 | # | Decision | Alternative | Rationale |
 |---|----------|-------------|-----------|
@@ -20,7 +20,7 @@ earlier reviewer Q&A (`QUESTIONS.md`); items marked **[Pn]** respond to the prop
 | D12 | **Either bank may `forceFinalizeDelivery`** [Q6] | Require both banks | A single stalled bank cannot withhold the exporter's payout. |
 | D13 | **No dispute module** [P2] | Bonded arbitration | A dispute function is a DoS/griefing surface and was judged out of scope; reclaim + force-finalize already protect stakeholders. |
 | D14 | **No `Pausable`** [P7] | Admin circuit breaker | A pause can *cause* the settlement stall the design prevents; settlement safety relies on `nonReentrant` + CEI + enum guards. |
-| D15 | **Consortium IPFS: one kubo node per role, private swarm + manual pin** [P8] | Single local node; Pinata | Each party holds its own copy with consortium-only retrieval; content addressing keeps **one CID per `(shipment, DocType)`**. `scripts/ipfs-pin.js` replicates CIDs. See `docs/IPFS_CONSORTIUM.md`. |
+| D15 | **Per-role IPFS: one kubo node per participant** [P8] | Single shared node; Pinata | Each role keeps its own copy and any involved party can read a document by CID through the DApp; content addressing keeps **one CID per `(shipment, DocType)`**. `scripts/ipfs-pin.js` keeps extra copies; Pinata stays optional. See `docs/IPFS_CONSORTIUM.md`. |
 | D16 | **Settlement token injected; core deploys the four on-chain companions** | Core deploys the token too | Keeps the token swappable (any stablecoin) and the constructor affordable under coverage. |
 | D17 | **`nonReentrant` on the internal settlement/refund** [Q19] | Guard external entry points only | The guard belongs where value leaves the contract; external callers are also protected by phase checks. |
 | D18 | **Tamper-evident "locked" anchors + revocable verification** [P9] | Strict immutability | A CID can never be silently replaced; certificates can be withdrawn and become invalid at payout. |

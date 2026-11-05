@@ -1,10 +1,10 @@
-// Pins a CID on one or more IPFS nodes — the manual replication step of the consortium model.
+// Pins a CID on one or more IPFS nodes, so a role keeps its own copy of a document.
 //
 //   node scripts/ipfs-pin.js <cid> --api /ip4/127.0.0.1/tcp/5011
 //   node scripts/ipfs-pin.js <cid> --api /ip4/127.0.0.1/tcp/5001 --api /ip4/127.0.0.1/tcp/5011
 //
-// After the issuing role anchors a CID on-chain, every counterparty that needs the document
-// pins it on its own node. Because CIDs are content-addressed, all replicas serve the same bytes.
+// After the issuing role anchors a CID on-chain, any counterparty that needs the document can pull
+// it onto its own node. Because CIDs are content-addressed, every copy serves the same bytes.
 const { execFileSync } = require("child_process");
 
 function pin(cid, api) {
