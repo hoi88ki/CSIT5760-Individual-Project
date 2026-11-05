@@ -86,3 +86,19 @@ See `docs/DESIGN_DECISIONS.md` and `ProposalImprovement.md` (section F) for rati
 
 Please annotate the relevant row above (e.g. `Q1: …`) or reply inline. Anything not answered will
 keep the stated working assumption.
+
+---
+
+## 6. Superseded by the revised proposal (2026-11-05)
+
+The proposal was rewritten and re-reviewed; several answers above are now **superseded**. The
+current authoritative decisions are in `docs/PROPOSAL_UPDATES.md`, `docs/DESIGN_DECISIONS.md` and
+`docs/REFACTOR_PLAN.md`. Notable changes:
+
+- Architecture moved to the proposal's **seven contracts** (`TradeChainCore`, `LetterOfCredit`,
+  `ShipmentTracker`, `ComplianceEngine`, `DocumentRegistry`, `ShipmentNFT`, `TradeUSD`).
+- **No dispute module** and **no `Pausable`** (removed after review).
+- **Local kubo IPFS** is the default (Pinata optional).
+- Roles are **Exporter · Importer · Bank · Logistics · Verifier** (+ admin). The earlier
+  issuing/advising split and the shared-verifier question (A4/Q4) are simplified to one bank and one
+  verifier role for the demo.

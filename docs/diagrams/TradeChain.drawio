@@ -1,0 +1,233 @@
+<mxfile host="app.diagrams.net" agent="opencode" version="24.7.17" type="device">
+  <diagram id="arch" name="Architecture">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="826" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="arch_title" value="TradeChain - System Architecture (updated proposal)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=20;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="20" y="10" width="1060" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="A1" value="Exporter&#10;(Seller)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="20" y="60" width="160" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="A2" value="Importer&#10;(Buyer)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="190" y="60" width="160" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="A3" value="Bank&#10;(issuing + advising)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="360" y="60" width="170" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="A4" value="Logistics Provider&#10;(carrier)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="545" y="60" width="170" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="A5" value="Verifier / Authorities&#10;(inspection, insurance, customs)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="730" y="60" width="170" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="A6" value="Administrator" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="915" y="60" width="160" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="O1" value="Web3 DApp - React (Vite) + Ethers.js v6 + MetaMask&#10;Role dashboard: upload documents to IPFS, sign transactions,&#10;trigger TradeChainCore workflows on Ethereum Sepolia" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="20" y="150" width="520" height="95" as="geometry" />
+        </mxCell>
+        <mxCell id="O2" value="Off-chain document store - IPFS (Pinata or local kubo node)&#10;Commercial Invoice · Packing List · Certificate of Origin ·&#10;Inspection Certificate · Insurance Certificate · Bill of Lading / AWB&#10;Only immutable CIDv1 anchors are stored on-chain" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="560" y="150" width="515" height="95" as="geometry" />
+        </mxCell>
+
+        <mxCell id="CORE" value="TradeChainCore - composition root (single address, no proxies)&#10;OpenZeppelin AccessControl · role-gated orchestration · event log&#10;Roles: EXPORTER · IMPORTER · BANK · LOGISTICS · VERIFIER · ADMIN" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="180" y="290" width="720" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="K1" value="TradeUSD.sol&#10;ERC-20 stablecoin&#10;settlement + escrow asset&#10;(role-gated mint)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="20" y="420" width="170" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="K2" value="ShipmentNFT.sol&#10;ERC-721 document-of-title&#10;milestone-gated transfer&#10;(B/L-backed)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="200" y="420" width="170" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="K3" value="DocumentRegistry.sol&#10;IPFS CID anchors&#10;per (shipment, docType)&#10;immutable + verification" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="380" y="420" width="170" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="K4" value="ComplianceEngine.sol&#10;Incoterm-aware required&#10;document validation&#10;before any release" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="560" y="420" width="170" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="K5" value="LetterOfCredit.sol&#10;L/C state machine&#10;escrow · settlement ·&#10;refund · dispute hold" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="740" y="420" width="170" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="K6" value="ShipmentTracker.sol&#10;milestones · timestamps&#10;status transitions&#10;per shipment" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="920" y="420" width="170" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="X1" value="Ethereum Sepolia Testnet&#10;deployment + verification" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="180" y="590" width="300" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="X2" value="Etherscan&#10;verified source + transaction audit" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="520" y="590" width="300" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ea1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="A1" target="CORE">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ea2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="A2" target="CORE">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ea3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="A3" target="CORE">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ea4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="A4" target="CORE">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ea5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="A5" target="CORE">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ea6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="A6" target="CORE">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="eo1" value="ethers v6 / MetaMask" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;dashed=1;" edge="1" parent="1" source="O1" target="CORE">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eo2" value="CID anchors" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;dashed=1;" edge="1" parent="1" source="O2" target="K3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ek1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="CORE" target="K1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ek2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="CORE" target="K2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ek3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="CORE" target="K3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ek4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="CORE" target="K4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ek5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="CORE" target="K5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ek6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="CORE" target="K6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="eloc1" value="escrow / release TradeUSD" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="K5" target="K1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eloc2" value="transfer title at milestone" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="K5" target="K2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ecomp" value="reads verified docs" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="K4" target="K3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ex1" value="deploy" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="CORE" target="X1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ex2" value="verify" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="CORE" target="X2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram id="workflow" name="Workflow">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="wf_title" value="TradeChain - End-to-End Trade Workflow (updated proposal)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=20;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="20" y="10" width="1060" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="S1" value="1. Importer - createOrder(seller, Incoterm, USD amount, deadline)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="120" y="60" width="620" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="S2" value="2. Exporter - register Commercial Invoice + Packing List, createShipment(orderId)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="120" y="135" width="620" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="S3" value="3. Bank / Importer - issue and fund the Letter of Credit&#10;TradeUSD escrowed in LetterOfCredit.sol" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="120" y="210" width="620" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="S4" value="4. Logistics - confirmPickup() - risk transfers; EXW settles here" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="120" y="285" width="620" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="S5" value="5. Logistics - confirmVesselLoading() + anchor Bill of Lading / AWB&#10;ShipmentNFT metadata set; FOB / CIF settle here" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="120" y="360" width="620" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="S6" value="6. Verifier / Authorities - anchor Inspection, Insurance and Customs certificates" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="120" y="435" width="620" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="S7" value="7. ComplianceEngine - validate the Incoterm-required document set (+ duty for DDP)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="120" y="510" width="620" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="S8" value="8. ShipmentNFT - transfer document-of-title / ownership to Importer&#10;DDP settles here" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="120" y="585" width="620" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="S9" value="9. LetterOfCredit - release escrowed TradeUSD to Exporter&#10;(atomic payout, CEI + nonReentrant)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="120" y="660" width="620" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="T1" value="Settled - Exporter paid, Importer holds the document-of-title" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="120" y="745" width="620" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="E3" value="Exception - deadline passed with no shipment:&#10;reclaimExpiredLC() refunds the Importer -&gt; Reclaimed" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="120" y="830" width="620" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="D1" value="Dispute raised by&#10;a participant?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="810" y="300" width="210" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="E1" value="Disputed - settlement&#10;temporarily suspended" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="810" y="450" width="210" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="E2" value="Authorised resolver decides:&#10;release - refund Importer - resume" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="810" y="545" width="210" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ws1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="S1" target="S2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ws2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="S2" target="S3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ws3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="S3" target="S4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ws4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="S4" target="S5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ws5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="S5" target="S6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ws6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="S6" target="S7">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ws7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="S7" target="S8">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ws8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="S8" target="S9">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ws9" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="S9" target="T1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="wd1" value="raise dispute" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;dashed=1;" edge="1" parent="1" source="S6" target="D1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="wd2" value="yes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="D1" target="E1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="wd3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="E1" target="E2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="wd4" value="release" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;dashed=1;" edge="1" parent="1" source="E2" target="S9">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="we3" value="no shipment before deadline" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;dashed=1;" edge="1" parent="1" source="S3" target="E3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

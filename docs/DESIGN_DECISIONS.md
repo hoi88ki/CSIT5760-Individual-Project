@@ -1,34 +1,39 @@
 # TradeChain — Design Decisions
 
-This log records the significant design choices and their rationale. Decisions marked
-**[Qn]** were confirmed by the reviewer's answers in `QUESTIONS.md`.
+Records the significant design choices and their rationale. Items marked **[Qn]** come from the
+earlier reviewer Q&A (`QUESTIONS.md`); items marked **[Pn]** respond to the proposal feedback in
+`docs/PROPOSAL_UPDATES.md`.
 
-| # | Decision | Alternative considered | Rationale |
-|---|----------|------------------------|-----------|
-| D1 | **Buyer opens an Order, then the Seller creates the Shipment** (`createOrder` → `createShipment`) **[Q1]** | Seller creates the shipment directly and the Buyer is inferred from `openLetterOfCredit` | The reviewer required the Buyer to create the order first; the named exporter then accepts it, which also fixes the counterparties up front and prevents an open-order race. |
-| D2 | **Settlement in an ERC-20 stablecoin** (injected token, `SafeERC20`) **[Q8]** | Native ETH | Matches real fiat-denominated L/Cs; avoids ETH price risk; `SafeERC20` handles non-standard tokens. Native ETH is no longer used. |
-| D3 | **Single 100 % atomic payout** at the risk-transfer milestone **[Q9]** | Instalments / partial draws | Explicitly in scope; keeps the state machine and CEI simple. |
-| D4 | **Insurance module omitted** **[Q2]** | Implement premium escrow + damage claims from the diagram | The reviewer judged the diagram's insurance flow out of scope and not "latest"; removing it keeps the core settlement focused. |
-| D5 | **Customs duty is optional and may be zero** **[Q3][Q11]** | Require a non-zero quoted duty | Many destinations are duty-free; `payCustomsDuty(id, 0)` still records the clearance step while moving no funds. |
-| D6 | **`DocType` order & anchor authority** **[Q4]** | Original ordering | Adopted the reviewer's table: CoO is Seller-issued (no NFT); Inspection/Insurance/Clearance are Verifier-issued and mint `TradeCertNFT`; the B/L (or AWB) is anchored by the Carrier at loading. |
-| D7 | **`reclaimExpiredLC` restricted to Buyer / issuing bank / admin** **[Q10]** | Permissionless | Prevents third-party griefing while keeping a neutral fallback if the Buyer is unavailable. |
-| D8 | **Either bank may `forceFinalizeDelivery`** independently **[Q6]** | Require both banks | A single stalled bank cannot withhold the Seller's payout. |
-| D9 | **Local IPFS (kubo)** **[Q12]** | Pinata (hosted) | The reviewer wants to verify content locally; `scripts/ipfs-add.js` returns a CIDv1, and only CIDs reach the chain. |
-| D10 | **No encryption of off-chain docs** **[Q13]** | Encrypt before pinning | The reviewer accepts restricted local access for this prototype. |
-| D11 | **eB/L escrow**: minted to the core at shipment creation; `tokenURI` set at loading; transferred to the Buyer at delivery | Mint at loading | One token per shipment avoids the need for token-id bookkeeping across terms, and EXW can settle before a B/L exists. |
-| D12 | **`nonReentrant` on the internal payout** **[Q19]** | Guard only external entry points | The guard belongs where value leaves the contract; external callers are additionally protected by phase checks. |
-| D13 | **`Phase` enum name** | `ShipmentState` (proposal) | The proposal used `ShipmentState` for both the storage-base contract and the enum; renaming the enum keeps the code compilable. |
-| D14 | **One storage base, no proxies** | Upgradeable/diamond | Matches the proposal's exclusion of proxy patterns and keeps a single auditable layout. |
-| D15 | **Documented "objective completion" for force-finalize** = `LoadedOnVessel` + full delivery document set anchored (+ duty for DDP) **[Q6]** | Require physical proof of delivery | Final delivery is subjective; anchoring the complete document set is the strongest objective signal available on-chain. |
+| # | Decision | Alternative | Rationale |
+|---|----------|-------------|-----------|
+| D1 | **Seven modular contracts + one type library** [P1] | One composed contract / diamond | Matches the updated proposal's component table while keeping one storage owner per concern. |
+| D2 | **Core is the only entry point; companions are `onlyCore`** | Users call modules directly | Single DApp address, one role authority; modules expose public views for transparency. |
+| D3 | **Buyer opens an Order, then the Seller creates the Shipment** [Q1] | Seller creates the shipment directly | Fixes the counterparties up front. |
+| D4 | **Settlement in an ERC-20 stablecoin (`TradeUSD`)** [Q8] | Native ETH | Matches fiat-denominated L/Cs; `SafeERC20` handles non-standard tokens. |
+| D5 | **Single 100 % atomic payout** [Q9] | Instalments | Keeps the state machine and CEI simple. |
+| D6 | **`TradeUSD` minting is role-gated** [P6] | Open `mint` (the old mock) | An open mint is a critical vulnerability if the token backs escrow. |
+| D7 | **No certificate NFT** [P1] | Keep `TradeCertNFT` | The seven-contract proposal has no certificate token; verification status lives in `DocumentRegistry` and is revocable. |
+| D8 | **e-B/L document-of-title NFT, escrowed by the core** [P1] | Freely transferable "ownership" NFT | In trade, the B/L is a document of **title**; the contract gates its transfer by Incoterm + phase. |
+| D9 | **Per-Incoterm/phase required documents** [P4] | Fixed set of six | CIF needs insurance, FOB needs the B/L, EXW needs neither, DDP needs clearance + duty. |
+| D10 | **Customs duty optional and may be zero** [Q3][Q11] | Require a non-zero quoted duty | Many destinations are duty-free; escrowed duty is forwarded to a treasury or refunded on reclaim. |
+| D11 | **`reclaimExpiredLC` restricted to importer / bank / admin** [Q10] | Permissionless | Prevents third-party griefing while keeping a neutral fallback. |
+| D12 | **Either bank may `forceFinalizeDelivery`** [Q6] | Require both banks | A single stalled bank cannot withhold the exporter's payout. |
+| D13 | **No dispute module** [P2] | Bonded arbitration | A dispute function is a DoS/griefing surface and was judged out of scope; reclaim + force-finalize already protect stakeholders. |
+| D14 | **No `Pausable`** [P7] | Admin circuit breaker | A pause can *cause* the settlement stall the design prevents; settlement safety relies on `nonReentrant` + CEI + enum guards. |
+| D15 | **Local kubo IPFS by default** [P8] | Pinata-only | A local node keeps commercially sensitive documents private; hosted pinning is optional (`--pinata`). |
+| D16 | **Settlement token injected; core deploys the other five companions** | Core deploys all six | Keeps the token swappable (any stablecoin) and the constructor affordable under coverage. |
+| D17 | **`nonReentrant` on the internal settlement/refund** [Q19] | Guard external entry points only | The guard belongs where value leaves the contract; external callers are also protected by phase checks. |
+| D18 | **Immutable "locked" anchors + revocable verification** [P9] | Strict immutability | A CID can never be silently replaced; certificates can be withdrawn and become invalid at payout. |
 
 ## Consequences / trade-offs
 
-- **Trusted verifier.** Verifiers are trusted to have checked the off-chain content before
-  anchoring/minting (trusted-oracle model), as stated in the proposal.
-- **Stablecoin dependency.** The core trusts the injected ERC-20; a malicious token could
-  re-enter (mitigated by `nonReentrant`) or censor transfers. Deployments should use a reputable
-  stablecoin.
-- **No partial settlement.** A single full payout means the contract cannot model retention or
-  discrepancy fees; acceptable for the scope.
-- **Same-block deadline edge.** `createOrder` requires `deadline > block.timestamp`; the Seller
-  must accept before the deadline (checked again in `createShipment`).
+- **Trusted verifier.** Verifiers are trusted to have validated the off-chain content before
+  anchoring (trusted-oracle model).
+- **Stablecoin dependency.** The core trusts the injected ERC-20; a malicious token is contained by
+  `nonReentrant`/CEI but could censor transfers.
+- **One bank role.** The demo collapses issuing/advising into a single `ROLE_BANK`; production would
+  separate them (and could use multisigs).
+- **Certificate of origin by the exporter.** A simplification; in practice a chamber of commerce or
+  authority issues it.
+- **Same-block deadline edge.** `createOrder` requires `deadline > block.timestamp`; the exporter
+  must accept before the deadline (re-checked in `createShipment`).

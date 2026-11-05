@@ -2,88 +2,85 @@
 
 ## 1. Deployment topology
 
-One `TradeChainCore` (single address, no proxies) owns two standalone ERC-721 tokens that it
-deploys in its constructor:
+The suite is **seven deployed contracts plus one inlined type library**. `TradeChainCore` is the
+role authority and the single user entry point; it deploys and wires the other six in its
+constructor (`TradeUSD` is passed in as the settlement token so it is never deployed twice).
 
 ```
-        ┌──────────────────────────── Deployer (DEFAULT_ADMIN_ROLE) ───────────────────────────┐
-        │ grants ROLE_SELLER/BUYER/CARRIER/ISSUING_BANK/ADVISING_BANK/VERIFIER                   │
-        ▼                                                                                       │
- ┌──────────────────────────────┐        owns        ┌──────────────┐   owns   ┌───────────────┐
- │        TradeChainCore        │───────────────────►│   EBLToken   │          │ TradeCertNFT  │
- │  (composition root, 1 addr)  │────────────────────┼──────────────┼─────────►│               │
- └───────────────┬──────────────┘                    └──────────────┘          └───────────────┘
-                 │ SafeERC20
-                 ▼
-        ┌──────────────────┐
-        │ Settlement token │  (ERC-20 stablecoin, e.g. 6-decimal USDC-like MockERC20 on testnet)
-        └──────────────────┘
+                         +---------------------- TradeChainCore -----------------------+
+                         |  AccessControl (roles)   ·   IERC721Receiver (escrow)        |
+                         +---+---------------+---------------+---------------+----------+
+                    onlyCore |        onlyCore |        view  |      onlyCore | controller
+                             v                 v              v               v
+                     ShipmentTracker   DocumentRegistry  ComplianceEngine  LetterOfCredit   ShipmentNFT
+                                                              reads:  registry + tracker
+                                                              LetterOfCredit escrows TradeUSD, calls compliance
 ```
 
-`TradeChainCore is SettlementModule` → `DocumentRegistry` → `ShipmentState` → `AccessControl`,
-`ReentrancyGuard`. All modules share **one storage layout**.
+`TradeUSD` and `ShipmentNFT` each own an `AccessControl` whose admin is the core, so the core can
+mint `TradeUSD` (role-gated) and mint/transfer the title NFT. No proxies, no upgradeable patterns.
+
+Deploy-time wiring (all performed in `TradeChainCore`'s constructor):
+
+| Contract | Constructor argument(s) |
+|----------|-------------------------|
+| `ShipmentNFT` | `core` |
+| `ShipmentTracker` | `core` |
+| `DocumentRegistry` | `core` |
+| `ComplianceEngine` | `registry`, `tracker` |
+| `LetterOfCredit` | `core`, `token`, `tracker`, `compliance`, `treasury` (= core initially) |
+| `TradeChainCore` | `token` (an ERC-20, e.g. `TradeUSD`) |
 
 ## 2. Storage
 
-| Mapping / field | Key | Value |
-|-----------------|-----|-------|
-| `_orders` | `orderId` | `Order{buyer, seller, term, deadline, lcAmount, shipmentId, fulfilled}` |
-| `_shipments` | `shipmentId` | `Shipment{…, phase, lcFunded, lcPaid, dutyPaid, titleTransferred, riskHolder, …}` |
-| `_documents` | `(shipmentId, DocType)` | `DocRecord{cid, issuer, timestamp, locked, certId}` |
-| `_nextOrderId` / `_nextShipmentId` | — | monotonic counters (ids start at 1) |
+| Contract | Mapping / field | Value |
+|----------|-----------------|-------|
+| `ShipmentTracker` | `_orders[orderId]` | `Order{importer, exporter, term, deadline, lcAmount, shipmentId, fulfilled}` |
+| `ShipmentTracker` | `_shipments[id]` | `Shipment{orderId, exporter, importer, term, phase, timestamps, lcAmount, riskHolder}` |
+| `DocumentRegistry` | `_documents[id][docType]` | `DocRecord{cid, issuer, timestamp, verified}` |
+| `LetterOfCredit` | `_lcs[id]` | `LC{amount, funded, paid, reclaimed, dutyAmount, dutyPaid, dutyPayer}` |
 
-`DocRecord.locked` enforces **anchor-once-then-lock**; `certId` links a verifier document to its
-`TradeCertNFT`.
+Ids are monotonic (`_nextOrderId`, `_nextShipmentId`, starting at 1); shipment ids also double as
+`ShipmentNFT` token ids.
 
-## 3. Public API
-
-### Roles (`AccessControl`)
-
-`ROLE_SELLER`, `ROLE_BUYER`, `ROLE_CARRIER`, `ROLE_ISSUING_BANK`, `ROLE_ADVISING_BANK`,
-`ROLE_VERIFIER` (+ `DEFAULT_ADMIN_ROLE`). `grantRoles(bytes32[], address[])` batch-grants.
-
-### Lifecycle functions
+## 3. Public API (via `TradeChainCore`)
 
 | Function | Caller | Preconditions | Effect |
 |----------|--------|---------------|--------|
-| `createOrder(seller, term, lcAmount, deadline)` | Buyer | future deadline, non-zero amount | opens order #n |
-| `createShipment(orderId, invoiceCID, packingListCID)` | ordered Seller | order unfulfilled, before deadline | creates shipment, anchors invoice+packing, mints eB/L to core |
-| `openLetterOfCredit(id)` | shipment Buyer | phase `Created`, token approved | escrows L/C in core |
-| `anchorDocument(id, docType, cid)` | per-DocType role | phase ≥ `LCFunded`, anchorable type | anchors once; verifier types mint `TradeCertNFT` |
-| `confirmPickup(id)` | Carrier | phase `LCFunded`, pickup docs present | → `PickedUp`; risk→Buyer; **EXW pays** |
-| `confirmVesselLoading(id, blCid)` | Carrier | phase `PickedUp`, loading docs present | anchors B/L, sets eB/L URI → `LoadedOnVessel`; **FOB/CIF pay** |
-| `payCustomsDuty(id, amount)` | Seller (DDP) / Buyer | not paid, phase ≤ `Delivered` | escrows duty (0 allowed) |
-| `confirmFinalDelivery(id)` | shipment Buyer | phase `LoadedOnVessel`, delivery docs present | → `Delivered`, transfers eB/L; **DDP pays** |
-| `forceFinalizeDelivery(id)` | either bank | phase `LoadedOnVessel`, docs complete | same as above, bypassing a stalling Buyer |
-| `reclaimExpiredLC(id)` | Buyer / issuing bank / admin | past deadline, phase `LCFunded` | refunds escrow → `Reclaimed` |
-| `revokeCertificate(id, docType)` | issuer or admin | cert exists | burns cert (document invalid at payout) |
+| `createOrder(exporter, term, lcAmount, deadline)` | Importer | future deadline, non-zero amount | opens order #n |
+| `createShipment(orderId, invoiceCID, packingCID)` | ordered Exporter | order unfulfilled, before deadline | shipment + invoice/packing anchors + title NFT minted to core |
+| `openLetterOfCredit(id)` | Importer (buyer) | phase `Created`, token approved | escrows the L/C in `TradeUSD` (in `LetterOfCredit`) |
+| `anchorDocument(id, docType, cid)` | per-DocType role | phase ≥ `LCFunded`, anchorable type | anchors once; verified |
+| `confirmPickup(id)` | Logistics | phase `LCFunded`, pickup docs present | → `PickedUp`; risk→importer; **EXW pays** |
+| `confirmVesselLoading(id, blCid)` | Logistics | phase `PickedUp`, loading docs present | anchors B/L, sets NFT URI → `LoadedOnVessel`; **FOB/CIF pay** |
+| `payCustomsDuty(id, amount)` | Exporter (DDP) / Importer | not paid, phase ≤ `Delivered` | escrows duty (0 allowed) |
+| `confirmFinalDelivery(id)` | Importer (buyer) | phase `LoadedOnVessel`, delivery docs present | → `Delivered`, transfers title; **DDP pays** |
+| `forceFinalizeDelivery(id)` | Bank | phase `LoadedOnVessel`, docs complete | same, bypassing a stalling importer |
+| `reclaimExpiredLC(id)` | Importer / Bank / admin | past deadline, phase `LCFunded` | refunds escrow → `Reclaimed` |
+| `revokeDocument(id, docType)` | issuer or admin | document exists, verified | clears `verified` (invalid at payout) |
 
-### Views
-
-`getOrder`, `getShipment`, `getDocument`, `orderCount`, `shipmentCount`, `hasValidDocument`,
-`payoutPhaseOf(term)`, `requiredDocumentsAt(id, phase)`, `settlementToken()`, `eblToken()`,
-`certNFT()`.
+**Views:** `getOrder`, `getShipment`, `getDocument`, `getLC`, `orderCount`, `shipmentCount`,
+`hasValidDocument`, `payoutPhaseOf`, `requiredDocumentsAt`, `isCompliant`, plus companion-address
+getters (`settlementToken`, `shipmentNFT`, `shipmentTracker`, `documentRegistry`,
+`complianceEngine`, `letterOfCredit`).
 
 ## 4. Document validity
 
-`_hasValidDocument(id, docType)` is true iff a CID is anchored **and**, for a verifier type
-(`InspectionCertificate`, `InsuranceCertificate`, `CustomsClearance`), the linked certificate
-still exists (unrevoked). `_requireDocuments(id, mask)` walks the bitmask and reverts with
-`MissingMandatoryDocument(id, docType)` on the first gap.
+`DocumentRegistry.isValid(id, docType)` is true iff a CID is anchored **and** `verified` (not
+revoked). `ComplianceEngine.firstMissing` walks the required bitmask for the shipment's Incoterm ×
+phase and reverts with `MissingMandatoryDocument` on the first gap.
 
 ## 5. Payout engine
 
-`_triggerAtomicPayout(id)` is the *only* path that moves the L/C:
+`LetterOfCredit.settle(id, exporter)` is the only path that moves the L/C:
 
 1. `nonReentrant` + strict checks-effects-interactions.
-2. Verifies the shipment is funded, at the exact risk-transfer phase, holds every mandatory
-   document, and (DDP) has duty paid.
-3. Sets `lcPaid`, moves `riskHolder` to the Buyer and emits `AtomicLCPayoutExecuted`
-   **before** the `safeTransfer` to the Seller.
+2. Verifies the shipment is funded, at the exact risk-transfer phase (from `ComplianceEngine`),
+   holds every mandatory document, and (DDP) has duty paid.
+3. Sets `paid`, then `safeTransfer`s the L/C to the exporter (and the duty to the treasury).
 
 ## 6. Off-chain layer
 
-Documents and certificate metadata live on **IPFS** (local kubo node via
-`scripts/ipfs-add.js`, per Q12). Only CIDs are stored on-chain, so gas is constant-bounded per
-document and independent of file size. The dashboard (`dapp/`) reads on-chain state and calls
-the contract directly.
+Documents and certificate metadata live on **IPFS** (local kubo node via `scripts/ipfs-add.js` and
+the DApp's kubo HTTP upload). Only CIDs are stored on-chain, so gas is constant-bounded per document
+and independent of file size. The React DApp reads on-chain state and calls the core directly.

@@ -99,3 +99,27 @@ supersede the original proposal text where they conflict.
 ---
 
 _Last updated: 2026-11-05 (initial implementation pass)._
+
+---
+
+## G. Update for the revised proposal (7-contract restructure)
+
+The proposal was rewritten (`CSIT5760_Project_Proposal_21232072.docx`) with a seven-contract design.
+A second review produced `docs/PROPOSAL_UPDATES.md`, which lists the exact proposal locations to edit
+and the suggested wording (feedback items A.1–C.15). Resolutions adopted in code:
+
+| Item | Resolution |
+|------|------------|
+| A.1 | e-B/L **document-of-title** NFT, escrowed by the core and transferred at the Incoterm-correct milestone (not a free "ownership" token). |
+| A.2 | **Dispute module omitted** (out of scope; reclaim + force-finalize remain). |
+| A.3 | **Verifier / Authorities** added as an authorised address; certificate content on IPFS. |
+| A.4 | **Per-Incoterm/phase** required-document set (`ComplianceEngine`). |
+| A.5 | L/C roles clarified: importer funds the escrow, bank validates + force-finalizes. |
+| A.6 | `TradeUSD` minting is **`MINTER_ROLE`-gated**. |
+| B.7 | **`Pausable` removed.** |
+| B.8 | **Local kubo IPFS** is the default (Pinata optional). |
+| B.9 | Wording: **tamper-evident, append-only anchors + verifier-controlled revocation**. |
+| B.10 | Reentrancy mitigation documented to include **ERC-721 receiver hooks**. |
+| B.11 | Bar kept high (**≥ 90 %** coverage; 0 High Slither). |
+
+See `docs/DESIGN_DECISIONS.md` (D1–D18) and `docs/REFACTOR_PLAN.md`.
