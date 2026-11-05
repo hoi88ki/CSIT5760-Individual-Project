@@ -1,4 +1,4 @@
-// Shared fixtures and helpers for the TradeChain test-suite (7-contract layout).
+// Shared fixtures and helpers for the TradeChain test-suite (6-contract layout).
 const { ethers } = require("hardhat");
 
 // Enum mirrors (Solidity enums are exposed as uint8 by ethers).
@@ -40,7 +40,7 @@ const LC = 100_000n * UNIT; // default L/C amount
 
 /**
  * Deploys the full suite. Pass `settlementToken` to inject an external ERC-20
- * (e.g. the adversarial token); otherwise the core deploys its own TradeUSD.
+ * (e.g. the adversarial token); otherwise a demo TradeUSD is deployed and injected.
  */
 async function deployTradeChain({ settlementToken } = {}) {
   const [admin, exporter, importer, bank, logistics, verifier, outsider] = await ethers.getSigners();
@@ -69,9 +69,10 @@ async function deployTradeChain({ settlementToken } = {}) {
   if (usd) await usd.connect(admin).grantRole(await usd.MINTER_ROLE(), coreAddr);
 
   const token = await ethers.getContractAt("TradeUSD", tokenAddr);
-  const nft = await ethers.getContractAt("ShipmentNFT", await core.shipmentNFT());
   const registry = await ethers.getContractAt("DocumentRegistry", await core.documentRegistry());
+  // ShipmentTracker is also the ERC-721 document-of-title token (tokenId == shipmentId).
   const tracker = await ethers.getContractAt("ShipmentTracker", await core.shipmentTracker());
+  const nft = tracker;
   const compliance = await ethers.getContractAt("ComplianceEngine", await core.complianceEngine());
   const loc = await ethers.getContractAt("LetterOfCredit", await core.letterOfCredit());
 

@@ -7,17 +7,16 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 
 import {TradeTypes} from "./libraries/TradeTypes.sol";
-import {ShipmentNFT} from "./tokens/ShipmentNFT.sol";
 import {ShipmentTracker} from "./core/ShipmentTracker.sol";
 import {DocumentRegistry} from "./core/DocumentRegistry.sol";
 import {ComplianceEngine} from "./core/ComplianceEngine.sol";
 import {LetterOfCredit} from "./core/LetterOfCredit.sol";
 
 /// @title TradeChainCore — central coordinator and single user entry point
-/// @notice Owns the `AccessControl` role authority, deploys/wires the six companion contracts and
+/// @notice Owns the `AccessControl` role authority, deploys/wires the five companion contracts and
 ///         orchestrates the full trade workflow (orders, documents, milestones, settlement).
 /// @dev    Companion contracts accept calls only from this core (`onlyCore`) and expose public
-///         views, so the DApp interacts with one address while seven contracts are deployed.
+///         views, so the DApp interacts with one address while six contracts are deployed.
 contract TradeChainCore is AccessControl, IERC721Receiver {
     using SafeERC20 for IERC20;
 
@@ -36,7 +35,6 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
     // ---------------------------------------------------------------------
 
     IERC20 public immutable settlementToken;
-    ShipmentNFT public immutable shipmentNFT;
     ShipmentTracker public immutable shipmentTracker;
     DocumentRegistry public immutable documentRegistry;
     ComplianceEngine public immutable complianceEngine;
@@ -97,7 +95,6 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
         IERC20 token = token_;
         settlementToken = token;
 
-        ShipmentNFT nft = new ShipmentNFT(address(this));
         ShipmentTracker tracker = new ShipmentTracker(address(this));
         DocumentRegistry registry = new DocumentRegistry(address(this));
         ComplianceEngine compliance = new ComplianceEngine(address(registry), address(tracker));
@@ -109,7 +106,6 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
             address(this) // treasury defaults to the core; admin can re-point it
         );
 
-        shipmentNFT = nft;
         shipmentTracker = tracker;
         documentRegistry = registry;
         complianceEngine = compliance;
@@ -166,7 +162,7 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
         id = shipmentTracker.fulfilOrder(orderId, msg.sender);
         documentRegistry.anchor(id, TradeTypes.DocType.CommercialInvoice, invoiceCID, msg.sender);
         documentRegistry.anchor(id, TradeTypes.DocType.PackingList, packingListCID, msg.sender);
-        shipmentNFT.mint(address(this), id, "");
+        shipmentTracker.mint(address(this), id, "");
 
         TradeTypes.Shipment memory s = shipmentTracker.getShipment(id);
         emit ShipmentCreated(id, orderId, msg.sender, s.importer, s.term, s.lcAmount, s.deadline);
@@ -221,7 +217,7 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
         if (s.phase != TradeTypes.Phase.PickedUp) revert InvalidState(id, TradeTypes.Phase.PickedUp, s.phase);
 
         documentRegistry.anchor(id, TradeTypes.DocType.BillOfLadingOrAWB, blCid, msg.sender);
-        shipmentNFT.setTokenURI(id, string.concat("ipfs://", blCid));
+        shipmentTracker.setTokenURI(id, string.concat("ipfs://", blCid));
         complianceEngine.requireCompliant(id, s.term, TradeTypes.Phase.LoadedOnVessel);
 
         shipmentTracker.setPhase(id, TradeTypes.Phase.LoadedOnVessel);
@@ -311,7 +307,7 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
         complianceEngine.requireCompliant(id, s.term, TradeTypes.Phase.Delivered);
 
         shipmentTracker.setPhase(id, TradeTypes.Phase.Delivered);
-        shipmentNFT.transferTitle(id, s.importer);
+        shipmentTracker.transferTitle(id, s.importer);
         emit MilestoneReached(id, TradeTypes.Phase.Delivered, actor);
         emit TitleTransferred(id, address(this), s.importer);
 

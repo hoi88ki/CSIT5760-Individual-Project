@@ -1,4 +1,4 @@
-// Deploys the TradeChain suite (7 contracts) and wires the operational roles.
+// Deploys the TradeChain suite (6 contracts) and wires the operational roles.
 //
 // Usage:
 //   npx hardhat run scripts/deploy.js --network localhost
@@ -84,7 +84,6 @@ async function main() {
     settlementToken: tokenAddress,
     tokenMeta,
     core: coreAddress,
-    shipmentNFT: await core.shipmentNFT(),
     shipmentTracker: await core.shipmentTracker(),
     documentRegistry: await core.documentRegistry(),
     complianceEngine: await core.complianceEngine(),

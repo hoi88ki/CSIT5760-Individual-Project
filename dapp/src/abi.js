@@ -22,7 +22,6 @@ export const CORE_ABI = [
   "function revokeDocument(uint256 id, uint8 docType)",
   // views
   "function settlementToken() view returns (address)",
-  "function shipmentNFT() view returns (address)",
   "function shipmentTracker() view returns (address)",
   "function documentRegistry() view returns (address)",
   "function complianceEngine() view returns (address)",

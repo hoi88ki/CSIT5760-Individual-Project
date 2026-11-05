@@ -10,6 +10,9 @@
   `nonReentrant`/CEI (proved by `MaliciousReentrancy`), but could censor transfers.
 - **Only the core mutates.** Every companion rejects non-core callers (`OnlyCore`), so module state
   can only change through the role-gated facade.
+- **Title transfer is core-only.** The e-B/L ERC-721 lives in `ShipmentTracker`; `_update` rejects
+  every externally initiated transfer, so the holder cannot bypass the milestone gate with
+  `transferFrom`/`safeTransferFrom`. Only the core's `transferTitle` moves the title at settlement.
 
 ## 2. Threat table
 
@@ -23,6 +26,7 @@
 | **Settlement stall (importer)** | Importer withholds delivery | Either bank may `forceFinalizeDelivery` | `Neutrality` |
 | **Settlement stall (exporter)** | Exporter never ships | Deadline reclaim by importer/bank/admin | `Neutrality` |
 | **Unauthorized milestone** | Wrong role advances the shipment or mints | `onlyRole` + per-shipment importer/exporter checks | `AccessControl` |
+| **Unauthorized title transfer** | Holder sells/endorses the e-B/L before settlement | `ShipmentTracker._update` rejects public ERC-721 transfers; only the core can `transferTitle` | `Tokens.test.js` (public `transferFrom` reverts) |
 | **Bad input** | Empty CID, zero/oversized payment, past deadline | Custom-error guards + allowance failures | `Order`, `DocumentRegistry`, `Modules` |
 | **Integer overflow** | Counter/amount overflow | Solidity 0.8 checked arithmetic | compiler default |
 
@@ -34,8 +38,8 @@
 ## 4. Test & coverage evidence
 
 ```
-npx hardhat test        # 77 passing
-npx hardhat coverage    # statements ~98% · branches ~87% · functions ~96% · lines ~98%
+npx hardhat test        # 84 passing
+npx hardhat coverage    # statements 100% · branches 92.74% · functions 100% · lines 100%
 ```
 
 Mocks are excluded from the coverage denominator via `.solcover.js`.

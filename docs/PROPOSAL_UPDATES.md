@@ -10,7 +10,7 @@ Legend: **[§n]** = proposal section number · **→** = suggested wording.
 ## A. Domain / business-logic
 
 ### A.1 — "Shipment ownership" NFT conflates title / property / risk  *(point out the update needed)*
-**Where:** §4 *Core Smart Contract Functions*, bullet **"Shipment Tracking and Ownership Management"**; and §5 table row **`ShipmentNFT.sol`**.
+**Where:** §4 *Core Smart Contract Functions*, bullet **"Shipment Tracking and Ownership Management"**; and §5 table row **`ShipmentTracker.sol`** (the e-B/L token is merged into `ShipmentTracker`; see the merge section below).
 **Current:** "represent shipment ownership through transferable NFTs" / "ERC-721 token representing shipment ownership, supporting minting and ownership transfer."
 **Change to:** frame it as an **electronic Bill of Lading / document-of-title NFT**, *not* plain ownership.
 > "Represent the negotiable document of title (the e-B/L) as an ERC-721 token. It is minted to, and escrowed by, `TradeChainCore`; its metadata is set when the B/L/AWB is anchored; and it is transferred to the importer at the settlement milestone. Transfer is gated by the contract according to the selected Incoterm and the shipment phase (not freely transferable)."
@@ -33,7 +33,7 @@ Also add a phrase to §5 `DocumentRegistry.sol`: "per `DocType`, records the CID
 **Where:** §4 bullet **"Document Compliance Verification"**; §5 row **`ComplianceEngine.sol`**.
 **Current:** "checks the completeness of six required trade documents before approval" / "checks the completeness of six required trade documents".
 **Change to:** treat the six as the *universe*; the **mandatory set is a function of the Incoterm and the milestone**:
-> "The six document types form the universe; the set that must be present before a milestone/payout is derived from the Incoterm and the phase — e.g. **CIF** additionally requires the Insurance Certificate, **FOB** requires the B/L and an inspection certificate, **EXW** requires neither insurance nor an inspection certificate, and **DDP** requires the Certificate of Origin and Customs Clearance (plus duty paid)."
+> "The seven document types form the universe; the set that must be present before a milestone/payout is derived from the Incoterm and the phase — e.g. **CIF** additionally requires the Insurance Certificate, **FOB** requires the B/L and an inspection certificate, **EXW** requires neither insurance nor an inspection certificate, and **DDP** requires the Certificate of Origin and Customs Clearance (plus duty paid)."
 
 ### A.5 — Letter-of-Credit realism  *(fix)*
 **Where:** §4 bullet **"Letter of Credit Management"**; §5 row **`LetterOfCredit.sol`**.
@@ -87,7 +87,7 @@ coverage with 0 High Slither findings** (Medium triaged), and **seven** document
 ### B.11 — Metric consistency  *(a considerably high bar is enough)*
 **Where:** §7 last row; §8 Testing Plan; §9 Work Plan Phase 2.
 **Change to:** align on one clearly-high bar:
-> "**0 High-severity Slither findings** (Medium findings are reported and triaged manually), **≥ 90 % statement and branch coverage**." (The repo currently reaches ~98 % statements / ~87 % branch.)
+> "**0 High-severity Slither findings** (Medium findings are reported and triaged manually), **≥ 90 % statement and branch coverage**." (The repo reaches 100 % statements / **92.74 % branch**.)
 
 ---
 
@@ -96,10 +96,10 @@ coverage with 0 High Slither findings** (Medium triaged), and **seven** document
 ### C.12 — Objectives not measurable  *(suggest change)*
 **Where:** §3 Project Objectives table.
 **Suggested replacements (keep the same IDs):**
-- **OBJ-1** — "Implement the document registry and e-B/L token." *Success:* "Each of the six document types is anchored by its designated role; an anchored CID cannot be replaced; unauthorised anchors revert; the e-B/L token transfers to the importer only at the Incoterm-correct milestone."
+- **OBJ-1** — "Implement the document registry and e-B/L token." *Success:* "Each of the seven document types is anchored by its designated role; an anchored CID cannot be replaced; unauthorised anchors revert; the e-B/L token transfers to the importer only at the Incoterm-correct milestone."
 - **OBJ-2** — "Implement role-based access control." *Success:* "Every privileged function reverts with `AccessControlUnauthorizedAccount`/`Unauthorized` for accounts lacking the required role; an access-control matrix test passes."
 - **OBJ-3** — "Implement Incoterm-aware shipment tracking and settlement." *Success:* "All four Incoterms (EXW/FOB/CIF/DDP) settle at the correct risk-transfer milestone; DDP blocks until customs clearance and duty are complete; the required-document set is validated per Incoterm."
-- **OBJ-4** — "Deploy, test and verify on Sepolia." *Success:* "All seven contracts verified on Etherscan; ≥ 90 % statement/branch coverage; 0 High Slither findings; all positive/negative/boundary tests passing."
+- **OBJ-4** — "Deploy, test and verify on Sepolia." *Success:* "All six contracts verified on Etherscan; ≥ 90 % statement/branch coverage; 0 High Slither findings; all positive/negative/boundary tests passing."
 
 ### C.13 — Timeline  *(ignore — noted)*
 No change.
@@ -119,30 +119,72 @@ The section is currently **empty**. Insert the two diagrams from
 ## Reference implementation status
 
 The accompanying implementation already applies A.1–A.6, B.7, B.8, B.10 and B.11:
-seven contracts (`TradeChainCore`, `LetterOfCredit`, `ShipmentTracker`, `ComplianceEngine`,
-`DocumentRegistry`, `ShipmentNFT`, `TradeUSD`), role-gated minting, per-Incoterm compliance,
-milestone-gated title transfer, consortium (per-role) IPFS, and no dispute module / no `Pausable`.
-See [`REFACTOR_PLAN.md`](./REFACTOR_PLAN.md) for the mapping.
+six contracts (`TradeChainCore`, `LetterOfCredit`, `ShipmentTracker`, `ComplianceEngine`,
+`DocumentRegistry`, `TradeUSD`), role-gated minting, per-Incoterm compliance, milestone-gated title
+transfer, consortium (per-role) IPFS, and no dispute module / no `Pausable`. The e-B/L ERC-721
+document of title is **inside `ShipmentTracker`** (`tokenId == shipmentId`), so there is no separate
+`ShipmentNFT` contract. See [`REFACTOR_PLAN.md`](./REFACTOR_PLAN.md) for the mapping.
 
 ---
 
-## Review of the updated proposal (v3) — remaining edits
+## Merging `ShipmentNFT` into `ShipmentTracker` (6 contracts)
 
-You applied most of A.1–A.6 and B.8/B.10. The following are **still outstanding** in the current
-`.docx` (each with its location):
+**Answer: yes — and it is the better design.** The shipment record and its document of title share
+one identity (`tokenId == shipmentId`); the separate NFT contract stored only an owner and a URI,
+both facets of the shipment. Merging:
+
+- removes a duplicated existence check and a whole class of "NFT exists but shipment missing" bugs;
+- lets one contract own the shipment aggregate (metadata + lifecycle + title);
+- **fixes a real gate**: the standalone ERC-721 inherited OpenZeppelin's public `transferFrom`, so the
+  owner could move the title freely (contradicting "not freely transferable"). The merged
+  `ShipmentTracker` overrides `_update` and rejects every externally initiated transfer; only the
+  core's `transferTitle` moves the title at the settlement milestone.
+
+The implementation, tests, scripts and diagrams are already updated; the proposal needs the edits
+below (the diagram already shows **6 contracts**).
+
+### Exact proposal edits for the merge
+
+| # | Location | Find / change to |
+|---|----------|------------------|
+| M1 | §3 **OBJ-4** | "All **seven** contracts verified" → "All **six** contracts verified". |
+| M2 | §5 table | **Delete** the `ShipmentNFT.sol` row. |
+| M3 | §5 `ShipmentTracker.sol` row | Replace with: "*Orders, shipment records, lifecycle milestones **and the e-B/L document of title**. One ERC-721 token per shipment (`tokenId = shipmentId`) is minted to, and escrowed by, `TradeChainCore`; its `tokenURI` is set when the B/L/AWB is anchored; and it is transferred to the importer at the settlement milestone. Public ERC-721 transfers are rejected, so title moves only through the core at the Incoterm-correct milestone.*" Purpose: "*Shipment lifecycle tracking + digital document of title (e-B/L).*" |
+| M4 | §9 **Phase 1** | "Develop the **7** modular contracts" → "Develop the **6** modular contracts"; `^0.8.20` → `^0.8.24`. |
+| M5 | §9 **Phase 3** | "Deploy and verify all **7** contracts" → "all **6** contracts". |
+| M6 | §7 **Smart Contract Vulnerabilities** row | "cross-contract calls to **`ShipmentNFT.sol`** (ERC-721)" → "**`ShipmentTracker.sol`** (ERC-721 title)". |
+| M7 | §4 **Shipment Tracking and Ownership Management** bullet | Append: "*The title token lives inside `ShipmentTracker` (`tokenId = shipmentId`); holders cannot transfer it directly.*" |
+| M8 | §5.1 | Insert the updated **Architecture** and **Workflow** pages (now 6 contracts). |
+
+## Review of the updated proposal (v4)
+
+### Already fixed in v4
+
+| # | Location | Status |
+|---|----------|--------|
+| R1 | §7 *Mitigation* — "Pausable circuit breakers" | ✅ removed |
+| R2 | §7 *Validation* — 90 % branch, 0 High | ✅ fixed |
+| R3 | §3 OBJ-4 — ≥ 90 % branch | ✅ fixed |
+| R5 | §9 Phase 3 — "per-role kubo IPFS nodes" | ✅ fixed |
+| R6 | §6 React row — "role's own IPFS node" | ✅ fixed |
+| R7 | §3 OBJ-1 / §4 Off-Chain — seven types + Customs Clearance | ✅ fixed |
+| R8 | §7 *Asset Ownership Integrity* — e-B/L | ✅ fixed |
+| R9 | §4 *Incoterms Enforcement* — title transfer | ✅ fixed |
+
+### Still outstanding in v4
 
 | # | Location | What to change |
 |---|----------|----------------|
-| R1 | §7 last row, *Mitigation* | Remove "**Pausable circuit breakers**" — `Pausable` was dropped (B.7). |
-| R2 | §7 last row, *Validation* | "0 high/medium findings" → "**0 High** findings (Medium triaged)"; "≥ 85 % branch" → "**≥ 90 %**". |
-| R3 | §3 **OBJ-4** | "≥ 85 % branch coverage" → "**≥ 90 %**" (B.11: a considerably high bar). |
-| R4 | §9 **Phase 2** deliverable | "≥ 85 % branch coverage, 0 high/medium Slither findings" → align to R2. |
-| R5 | §9 **Phase 3** | "integrated with **Pinata IPFS SDK**" → "integrated with the **per-role kubo IPFS nodes**". |
-| R6 | §6 **React (Vite)** row | "upload documents to **Pinata**" → "upload to the **role's own IPFS node**". |
-| R7 | §3 **OBJ-1** | "each of the **six** document types" — the registry actually holds **seven** `DocType`s. Say "each document type" or "**seven**". Also add **Customs Clearance** to §4 *Off-Chain Data* (DDP requires it). |
-| R8 | §7 **Asset Ownership Integrity** row | "Shipment ownership is represented by ERC-721 NFTs" → "The **document of title (e-B/L)** is represented by an ERC-721 NFT". |
-| R9 | §4 **Incoterms Enforcement** bullet | "ownership transfer" → "**title (document-of-title) transfer**" (consistent with A.1). |
-| R10 | §5.1 *Architecture or Workflow* | Still empty — insert the two pages of [`docs/diagrams/TradeChain.drawio`](./diagrams/TradeChain.drawio). |
+| V4-1 | §9 **Phase 2** deliverable | "≥ **85 %** branch coverage, 0 **high/medium** Slither findings" → "≥ **90 %** branch coverage, 0 **High** findings (Medium triaged)". |
+| V4-2 | §6 **IPFS** row | "IPFS (**local kubo node**)" → "IPFS (**per-role kubo nodes**; private swarm + manual pin)". Keep the rationale about CIDs. |
+| V4-3 | §9 **Phase 3** | "off-chain **6-document** uploads" → "off-chain **7-document** uploads" (the registry has seven `DocType`s). |
+| V4-4 | §5.1 *Architecture or Workflow* | Still empty — insert the two pages of [`docs/diagrams/TradeChain.drawio`](./diagrams/TradeChain.drawio). |
+| V4-5 | §8 *Asset Settlement and Ownership Testing* | "**shipment ownership** is transferred via NFT" → "the **document of title** is transferred via the ERC-721 token". |
+| V4-6 | §4 *On-Chain Data* | "**Shipment NFT ownership**" → "**e-B/L title ownership (ERC-721, in `ShipmentTracker`)**". |
+| V4-7 | §5 `DocumentRegistry.sol` | "IPFS **hashes**" → "IPFS **CIDs (CIDv1)**" (precision). |
+| V4-8 | §5 `LetterOfCredit.sol` | "cancellation processes" → "**expiry refund (reclaim)**" (matches the implemented path). |
+| V4-9 | §9 **Phase 2** deliverable | "gas benchmark report" is listed but no such artefact exists yet — either produce one (`hardhat-gas-reporter`) or drop it. |
+| V4-10 | §4 / §5 **"negotiable"** | The token is **not** negotiable in this prototype (only the core can transfer it). Either drop "negotiable" or add: "*negotiability is restricted in this prototype: the contract, not the holder, releases title at the settlement milestone.*" |
 
 ### Clarifications — resolved
 
@@ -150,5 +192,6 @@ You applied most of A.1–A.6 and B.8/B.10. The following are **still outstandin
 |---|----------|----------|
 | 1 | IPFS replication | **Private swarm + manual pin** (`scripts/ipfs-pin.js`); no IPFS Cluster. |
 | 2 | Confidentiality | **Private swarm only** (consortium members); encryption out of scope. |
-| 3 | Quality bar | **≥ 90 % branch/statement coverage, 0 High Slither findings** (Medium triaged). Implemented: 100 % statements / **92.6 % branch** / 100 % functions / 100 % lines; CI fails on High. |
-| 4 | Document count | **Seven** `DocType`s incl. **Customs Clearance** (add it to §4's off-chain list). |
+| 3 | Quality bar | **≥ 90 % branch/statement coverage, 0 High Slither findings** (Medium triaged). Implemented: 100 % statements / **92.74 % branch** / 100 % functions / 100 % lines; CI fails on High. |
+| 4 | Document count | **Seven** `DocType`s incl. **Customs Clearance**. |
+| 5 | `ShipmentTracker` + `ShipmentNFT` | **Merge into one** (`tokenId == shipmentId`); title transfer gated in `_update`. |

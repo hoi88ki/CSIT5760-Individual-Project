@@ -2,9 +2,9 @@
 pragma solidity ^0.8.24;
 
 /// @title TradeTypes — shared value types for the TradeChain suite
-/// @notice Central enums, structs and constants so the seven contracts agree on one data model.
+/// @notice Central enums, structs and constants so the six contracts agree on one data model.
 /// @dev    Pure type/constant library: inlined by the compiler, never deployed as its own
-///         contract. Not counted among the seven deployed contracts.
+///         contract. Not counted among the six deployed contracts.
 library TradeTypes {
     /// @notice ICC Incoterms® 2020 subset supported by TradeChain.
     enum Incoterm {

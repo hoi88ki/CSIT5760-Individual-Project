@@ -4,9 +4,9 @@
 > Student: YUNG HOI KI (21232072) · Instructor: Pritom Rajkhowa · Network: **Ethereum Sepolia Testnet**
 > Repository: `https://github.com/hoi88ki/CSIT5760-Individual-Project`
 
-TradeChain is an on-chain documentary trade-finance and supply-chain tracker built as **seven
-modular smart contracts**. It pins trade documents on **IPFS** (local kubo node by default) and
-verifies only their immutable **CIDs** plus the **issuer's role** on **Ethereum**. Exporters,
+TradeChain is an on-chain documentary trade-finance and supply-chain tracker built as **six
+modular smart contracts**. It stores trade documents on **IPFS** (consortium: one kubo node per
+role) and verifies only their **CIDs** plus the **issuer's role** on **Ethereum**. Exporters,
 importers, banks, logistics providers, verifiers/authorities and the administrator interact through
 **role-gated** contracts, and the suite acts as an automated **Letter-of-Credit examining bank**
 that releases a **100 % atomic payout at the exact milestone where risk transfers under the chosen
@@ -40,11 +40,12 @@ lading / air waybill, and customs clearance — reconciled against a Letter of C
 terms follow ICC **Incoterms® 2020**. This reconciliation is slow, expensive, and vulnerable to
 forgery. TradeChain removes the trusted intermediary for the *verification and settlement* step:
 
-- **Documents stay off-chain** (IPFS). Only immutable **CIDs** are anchored on-chain.
+- **Documents stay off-chain** (IPFS). Only **CIDs** are anchored on-chain.
 - **Attestations are role-gated.** Inspection/insurance/customs certificates can only be anchored
   by the authorised verifier address, and can be revoked (invalidating them at payout).
-- **Title becomes a token.** The Bill of Lading is an **ERC-721 document-of-title NFT** escrowed by
-  the core and released to the importer at settlement.
+- **Title becomes a token.** The e-B/L is an **ERC-721 document of title** owned by
+  `ShipmentTracker` (one token per shipment, `tokenId == shipmentId`), escrowed by the core and
+  released to the importer at the Incoterm-correct milestone.
 - **Payout follows risk.** The contract validates the Incoterm-mandated document set and executes a
   **100 % atomic payout** exactly when risk transfers.
 
@@ -55,21 +56,20 @@ forgery. TradeChain removes the trusted intermediary for the *verification and s
 | **OBJ-1** | Document registry + e-B/L token | Each document type is anchored by its designated role; anchored CIDs are locked (never silently replaced); the title NFT transfers to the importer at the Incoterm-correct milestone. |
 | **OBJ-2** | Role-based access control | Every privileged function reverts for accounts lacking the required role; an access-control matrix test passes. |
 | **OBJ-3** | Incoterm-aware tracking & settlement | EXW/FOB/CIF/DDP settle at the correct risk-transfer milestone; DDP blocks until clearance + duty; the required-document set is validated per Incoterm. |
-| **OBJ-4** | Deploy, test & verify on Sepolia | Seven contracts verified on Etherscan; high coverage; 0 High Slither findings; positive/negative/boundary tests passing. |
+| **OBJ-4** | Deploy, test & verify on Sepolia | Six contracts verified on Etherscan; ≥ 90 % branch coverage; 0 High Slither findings; positive/negative/boundary tests passing. |
 
 ## 3. System Architecture
 
-### 3.1 Contract map (7 contracts + 1 type library)
+### 3.1 Contract map (6 contracts + 1 type library)
 
 | # | Component | Type | Responsibility |
 |---|-----------|------|----------------|
 | 1 | `TradeChainCore` | concrete (coordinator) | `AccessControl` role authority + single user entry point; deploys/wires the companions; orchestrates documents, milestones, settlement. |
 | 2 | `LetterOfCredit` | module | L/C state machine: funding, `TradeUSD` escrow, customs duty, atomic payout, expiry refund (reclaim). |
-| 3 | `ShipmentTracker` | module | Orders + shipment records, lifecycle `Phase`, milestone timestamps, risk holder. |
+| 3 | `ShipmentTracker` | module + ERC-721 | Orders + shipment records, lifecycle `Phase`, milestone timestamps, risk holder **and the e-B/L document-of-title token** (`tokenId == shipmentId`, milestone-gated transfer). |
 | 4 | `ComplianceEngine` | view module | Incoterm-aware required-document rules and validation. |
 | 5 | `DocumentRegistry` | module | Per-`(shipment, DocType)` CID anchors, verification status, anchor-once-then-lock. |
-| 6 | `ShipmentNFT` | ERC-721 | Document-of-title token (milestone-gated transfer, escrowed by the core). |
-| 7 | `TradeUSD` | ERC-20 | Settlement stablecoin with **role-gated** minting. |
+| 6 | `TradeUSD` | ERC-20 | Settlement stablecoin with **role-gated** minting. |
 
 `contracts/libraries/TradeTypes.sol` holds the shared enums/structs (inlined, not deployed).
 
@@ -79,15 +79,16 @@ forgery. TradeChain removes the trusted intermediary for the *verification and s
                     +----------------------- TradeChainCore (AccessControl) -----------------------+
    roles grant ---> |  ROLE_EXPORTER · IMPORTER · BANK · LOGISTICS · VERIFIER   (+ DEFAULT_ADMIN)   |
                     +------+---------------+---------------+---------------+-----------+-----------+
-                           | onlyCore      | onlyCore       | view          | onlyCore  | controller
-                           v               v                v               v           v
-                     ShipmentTracker  DocumentRegistry  ComplianceEngine  LetterOfCredit  ShipmentNFT
-                                                              | reads              | escrows
-                                                              +--------------------+--> TradeUSD
+                           | onlyCore      | onlyCore       | view          | onlyCore
+                           v               v                v               v
+                     ShipmentTracker  DocumentRegistry  ComplianceEngine  LetterOfCredit
+                                                              | reads        | escrows
+                                                              +--------------+--> TradeUSD
 ```
 
 Companion contracts accept state changes **only from the core** (`onlyCore`) and expose public
-views, so the DApp interacts with a single address while seven contracts are deployed.
+views, so the DApp interacts with a single address while six contracts are deployed.
+`ShipmentTracker` is also the ERC-721 document of title (`tokenId == shipmentId`).
 
 ### 3.2 Roles
 
@@ -174,22 +175,21 @@ Bank       forceFinalizeDelivery(id)                             → if the impo
 ├── contracts/
 │   ├── TradeChainCore.sol              # coordinator, AccessControl, single entry point
 │   ├── core/
-│   │   ├── ShipmentTracker.sol         # orders, shipments, phase/milestones
+│   │   ├── ShipmentTracker.sol         # orders, shipments, phase/milestones + e-B/L ERC-721
 │   │   ├── DocumentRegistry.sol        # CID anchors + verification status
 │   │   ├── ComplianceEngine.sol        # Incoterm-aware required-document rules
 │   │   └── LetterOfCredit.sol          # escrow, settlement, duty, reclaim
 │   ├── tokens/
-│   │   ├── ShipmentNFT.sol             # ERC-721 document-of-title
 │   │   └── TradeUSD.sol                # ERC-20 stablecoin (role-gated mint)
 │   ├── libraries/TradeTypes.sol        # shared enums/structs
 │   └── mocks/MaliciousReentrancy.sol   # adversarial settlement token (tests only)
-├── test/                               # 77-test Hardhat suite
+├── test/                               # 84-test Hardhat suite
 │   ├── helpers/fixture.js
 │   ├── Order.test.js · DocumentRegistry.test.js · ComplianceEngine.test.js
 │   ├── Incoterms.e2e.test.js · Neutrality.test.js · AccessControl.test.js
 │   ├── Modules.test.js · Reentrancy.test.js · Tokens.test.js · Views.test.js
 ├── scripts/
-│   ├── deploy.js                       # deploy + wire the seven contracts + roles
+│   ├── deploy.js                       # deploy + wire the six contracts + roles
 │   ├── seed-demo.js                    # drive a full EXW→FOB→CIF→DDP demo
 │   ├── verify.js                       # Etherscan verification helper
 │   ├── ipfs-add.js                     # upload to a role's kubo node → CIDv1
@@ -198,7 +198,7 @@ Bank       forceFinalizeDelivery(id)                             → if the impo
 ├── docs/
 │   ├── ARCHITECTURE.md · DESIGN_DECISIONS.md · SECURITY.md
 │   ├── IPFS_CONSORTIUM.md              # per-role nodes + private swarm + manual pin
-│   ├── REFACTOR_PLAN.md                # 7-contract restructure plan
+│   ├── REFACTOR_PLAN.md                # 6-contract restructure plan
 │   ├── PROPOSAL_UPDATES.md             # where to edit the proposal (per feedback item)
 │   └── diagrams/TradeChain.drawio      # architecture + workflow diagrams (2 pages)
 ├── .github/workflows/ci.yml
@@ -313,8 +313,8 @@ security criteria and its report is retained as a build artifact.
 
 | Phase | Activities | Deliverable | Status |
 |-------|------------|-------------|--------|
-| **Phase 1** | Develop the seven contracts + tests | Compiling, tested suite | ✅ done |
-| **Phase 2** | Security review, adversarial tests, coverage | ≥ 90 % coverage, Slither report | ✅ done (98 %/87 %) |
+| **Phase 1** | Develop the six contracts + tests | Compiling, tested suite | ✅ done |
+| **Phase 2** | Security review, adversarial tests, coverage | ≥ 90 % branch coverage, Slither report | ✅ done (100 % stmts / 92.74 % branch) |
 | **Phase 3** | Sepolia deploy + verify, React DApp, demo video, report | Verified contracts, DApp, report | 🟡 deploy/video/report pending |
 
 Progress log: see `git log --oneline`.

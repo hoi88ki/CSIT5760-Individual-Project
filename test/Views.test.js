@@ -45,8 +45,8 @@ describe("Views & convenience getters", function () {
   it("exposes the companion contract addresses", async function () {
     const env = await loadFixture(fixture);
     expect(await env.core.settlementToken()).to.not.equal(ethers.ZeroAddress);
-    expect(await env.core.shipmentNFT()).to.not.equal(ethers.ZeroAddress);
     expect(await env.core.shipmentTracker()).to.not.equal(ethers.ZeroAddress);
+    expect(await env.tracker.name()).to.equal("TradeChain Shipment Title");
     expect(await env.core.documentRegistry()).to.not.equal(ethers.ZeroAddress);
     expect(await env.core.complianceEngine()).to.not.equal(ethers.ZeroAddress);
     expect(await env.core.letterOfCredit()).to.not.equal(ethers.ZeroAddress);

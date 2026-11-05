@@ -1,4 +1,4 @@
-// Verifies the seven deployed contracts on Etherscan from a deployments/<network>.json record.
+// Verifies the six deployed contracts on Etherscan from a deployments/<network>.json record.
 //   npx hardhat run scripts/verify.js --network sepolia
 const fs = require("fs");
 const path = require("path");
@@ -16,11 +16,6 @@ async function main() {
       name: "TradeChainCore",
       address: dep.core,
       constructorArguments: [dep.settlementToken],
-    },
-    {
-      name: "ShipmentNFT",
-      address: dep.shipmentNFT,
-      constructorArguments: [dep.core],
     },
     {
       name: "ShipmentTracker",

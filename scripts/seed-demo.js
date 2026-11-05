@@ -89,7 +89,7 @@ async function main() {
 
   const core = await ethers.getContractAt("TradeChainCore", dep.core);
   const token = await ethers.getContractAt("TradeUSD", dep.settlementToken);
-  const nft = await ethers.getContractAt("ShipmentNFT", dep.shipmentNFT);
+  const nft = await ethers.getContractAt("ShipmentTracker", dep.shipmentTracker);
 
   // Fund demo wallets (the deployer holds MINTER_ROLE on the demo TradeUSD).
   const fund = 10_000_000n * UNIT;

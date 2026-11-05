@@ -95,10 +95,11 @@ The proposal was rewritten and re-reviewed; several answers above are now **supe
 current authoritative decisions are in `docs/PROPOSAL_UPDATES.md`, `docs/DESIGN_DECISIONS.md` and
 `docs/REFACTOR_PLAN.md`. Notable changes:
 
-- Architecture moved to the proposal's **seven contracts** (`TradeChainCore`, `LetterOfCredit`,
-  `ShipmentTracker`, `ComplianceEngine`, `DocumentRegistry`, `ShipmentNFT`, `TradeUSD`).
+- Architecture moved to **six contracts** (`TradeChainCore`, `LetterOfCredit`, `ShipmentTracker`,
+  `ComplianceEngine`, `DocumentRegistry`, `TradeUSD`). The e-B/L ERC-721 title is part of
+  `ShipmentTracker` (`tokenId == shipmentId`); the separate `ShipmentNFT` was merged into it.
 - **No dispute module** and **no `Pausable`** (removed after review).
-- **Local kubo IPFS** is the default (Pinata optional).
+- **Consortium IPFS**: one kubo node per role, private swarm + manual pin (Pinata optional).
 - Roles are **Exporter · Importer · Bank · Logistics · Verifier** (+ admin). The earlier
   issuing/advising split and the shared-verifier question (A4/Q4) are simplified to one bank and one
   verifier role for the demo.
