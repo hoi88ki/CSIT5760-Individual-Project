@@ -20,7 +20,7 @@ earlier reviewer Q&A (`QUESTIONS.md`); items marked **[Pn]** respond to the prop
 | D12 | **Either bank may `forceFinalizeDelivery`** [Q6] | Require both banks | A single stalled bank cannot withhold the exporter's payout. |
 | D13 | **No dispute module** [P2] | Bonded arbitration | A dispute function is a DoS/griefing surface and was judged out of scope; reclaim + force-finalize already protect stakeholders. |
 | D14 | **No `Pausable`** [P7] | Admin circuit breaker | A pause can *cause* the settlement stall the design prevents; settlement safety relies on `nonReentrant` + CEI + enum guards. |
-| D15 | **Local kubo IPFS by default** [P8] | Pinata-only | A local node keeps commercially sensitive documents private; hosted pinning is optional (`--pinata`). |
+| D15 | **Consortium IPFS: one kubo node per role, private swarm + manual pin** [P8] | Single local node; Pinata | Each party holds its own copy with consortium-only retrieval; content addressing keeps **one CID per `(shipment, DocType)`**. `scripts/ipfs-pin.js` replicates CIDs. See `docs/IPFS_CONSORTIUM.md`. |
 | D16 | **Settlement token injected; core deploys the other five companions** | Core deploys all six | Keeps the token swappable (any stablecoin) and the constructor affordable under coverage. |
 | D17 | **`nonReentrant` on the internal settlement/refund** [Q19] | Guard external entry points only | The guard belongs where value leaves the contract; external callers are also protected by phase checks. |
 | D18 | **Immutable "locked" anchors + revocable verification** [P9] | Strict immutability | A CID can never be silently replaced; certificates can be withdrawn and become invalid at payout. |

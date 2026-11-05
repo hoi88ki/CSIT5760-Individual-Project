@@ -192,10 +192,12 @@ Bank       forceFinalizeDelivery(id)                             → if the impo
 │   ├── deploy.js                       # deploy + wire the seven contracts + roles
 │   ├── seed-demo.js                    # drive a full EXW→FOB→CIF→DDP demo
 │   ├── verify.js                       # Etherscan verification helper
-│   └── ipfs-add.js                     # local kubo (or --pinata) → CIDv1
+│   ├── ipfs-add.js                     # upload to a role's kubo node → CIDv1
+│   └── ipfs-pin.js                     # replicate (pin) a CID across role nodes
 ├── dapp/                               # React (Vite) + ethers v6 + MetaMask dashboard
 ├── docs/
 │   ├── ARCHITECTURE.md · DESIGN_DECISIONS.md · SECURITY.md
+│   ├── IPFS_CONSORTIUM.md              # per-role nodes + private swarm + manual pin
 │   ├── REFACTOR_PLAN.md                # 7-contract restructure plan
 │   ├── PROPOSAL_UPDATES.md             # where to edit the proposal (per feedback item)
 │   └── diagrams/TradeChain.drawio      # architecture + workflow diagrams (2 pages)
@@ -268,8 +270,12 @@ Each role runs its own kubo node; the DApp's **IPFS node** field targets the act
 ```bash
 node scripts/ipfs-add.js path/to/invoice.pdf                                 # default node (:5001)
 node scripts/ipfs-add.js path/to/invoice.pdf --api /ip4/127.0.0.1/tcp/5011   # a specific role node
+node scripts/ipfs-pin.js bafy... --api /ip4/127.0.0.1/tcp/5011               # replicate across nodes
 node scripts/ipfs-add.js path/to/invoice.pdf --pinata                        # optional hosted
 ```
+
+See [`docs/IPFS_CONSORTIUM.md`](./docs/IPFS_CONSORTIUM.md) for per-role node setup, the private
+swarm key, and the pin/retrieve flow.
 
 ## 7. Security Considerations
 

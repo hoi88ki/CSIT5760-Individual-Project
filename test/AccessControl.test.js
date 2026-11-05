@@ -120,6 +120,18 @@ describe("Access control & state-machine guards", function () {
         "ShipmentNotFound"
       );
     });
+
+    it("advancing a reclaimed shipment reverts", async function () {
+      const env = await loadFixture(fixture);
+      const { shipmentId } = await createOrderAndShipment(env, { term: Incoterm.FOB });
+      await fundLC(env, shipmentId);
+      await time.increaseTo(Number((await env.core.getShipment(shipmentId)).deadline) + 1);
+      await env.core.connect(env.importer).reclaimExpiredLC(shipmentId);
+      await expect(env.core.connect(env.logistics).confirmPickup(shipmentId)).to.be.revertedWithCustomError(
+        env.core,
+        "InvalidStateRange"
+      );
+    });
   });
 
   describe("admin", function () {
@@ -132,6 +144,16 @@ describe("Access control & state-machine guards", function () {
       await expect(
         env.core.connect(env.admin).grantRoles([await env.core.ROLE_EXPORTER()], [])
       ).to.be.revertedWithCustomError(env.core, "ArrayLengthMismatch");
+    });
+
+    it("admin can re-point the duty treasury", async function () {
+      const env = await loadFixture(fixture);
+      await expect(env.core.connect(env.outsider).setTreasury(env.outsider.address)).to.be.revertedWithCustomError(
+        env.core,
+        "AccessControlUnauthorizedAccount"
+      );
+      await env.core.connect(env.admin).setTreasury(env.outsider.address);
+      expect(await env.loc.treasury()).to.equal(env.outsider.address);
     });
   });
 

@@ -6,6 +6,8 @@ const { ethers } = require("hardhat");
 const { time } = require("@nomicfoundation/hardhat-network-helpers");
 const { Incoterm, Phase, DocType, CID, LC, futureDeadline } = require("./helpers/fixture");
 
+const bit = (d) => 1 << d;
+
 describe("Companion contract internals", function () {
   let admin, exporter, importer, outsider;
 
@@ -37,6 +39,9 @@ describe("Companion contract internals", function () {
         tracker.createOrder(importer.address, ethers.ZeroAddress, Incoterm.FOB, LC, await futureDeadline())
       ).to.be.revertedWithCustomError(tracker, "ZeroAddress");
       await expect(
+        tracker.createOrder(ethers.ZeroAddress, exporter.address, Incoterm.FOB, LC, await futureDeadline())
+      ).to.be.revertedWithCustomError(tracker, "ZeroAddress");
+      await expect(
         tracker.createOrder(importer.address, exporter.address, Incoterm.FOB, 0, await futureDeadline())
       ).to.be.revertedWithCustomError(tracker, "InvalidAmount");
       await expect(
@@ -57,6 +62,10 @@ describe("Companion contract internals", function () {
       );
 
       await expect(tracker.setRiskHolder(1n, ethers.ZeroAddress)).to.be.revertedWithCustomError(tracker, "ZeroAddress");
+      await expect(tracker.setRiskHolder(99n, exporter.address)).to.be.revertedWithCustomError(
+        tracker,
+        "ShipmentNotFound"
+      );
       await expect(tracker.setPhase(99n, Phase.PickedUp)).to.be.revertedWithCustomError(tracker, "ShipmentNotFound");
 
       const s = await tracker.getShipment(1n);
@@ -119,6 +128,23 @@ describe("Companion contract internals", function () {
       await expect(C.deploy(ethers.ZeroAddress, admin.address)).to.be.revertedWithCustomError(C, "ZeroAddress");
       await expect(C.deploy(admin.address, ethers.ZeroAddress)).to.be.revertedWithCustomError(C, "ZeroAddress");
     });
+
+    it("requiredForShipment returns the mask for the shipment's Incoterm", async function () {
+      const T = await ethers.getContractFactory("ShipmentTracker");
+      const tracker = await T.deploy(admin.address);
+      await tracker.waitForDeployment();
+      const R = await ethers.getContractFactory("DocumentRegistry");
+      const registry = await R.deploy(admin.address);
+      await registry.waitForDeployment();
+      const C = await ethers.getContractFactory("ComplianceEngine");
+      const compliance = await C.deploy(await registry.getAddress(), await tracker.getAddress());
+      await compliance.waitForDeployment();
+
+      await tracker.createOrder(importer.address, exporter.address, Incoterm.CIF, LC, await futureDeadline());
+      await tracker.fulfilOrder(1n, exporter.address);
+      const base = bit(DocType.CommercialInvoice) | bit(DocType.PackingList);
+      expect(await compliance.requiredForShipment(1n, Phase.PickedUp)).to.equal(BigInt(base));
+    });
   });
 
   describe("LetterOfCredit", function () {
@@ -162,6 +188,18 @@ describe("Companion contract internals", function () {
       const L = await ethers.getContractFactory("LetterOfCredit");
       await expect(
         L.deploy(ethers.ZeroAddress, admin.address, admin.address, admin.address, admin.address)
+      ).to.be.revertedWithCustomError(L, "ZeroAddress");
+      await expect(
+        L.deploy(admin.address, ethers.ZeroAddress, admin.address, admin.address, admin.address)
+      ).to.be.revertedWithCustomError(L, "ZeroAddress");
+      await expect(
+        L.deploy(admin.address, admin.address, ethers.ZeroAddress, admin.address, admin.address)
+      ).to.be.revertedWithCustomError(L, "ZeroAddress");
+      await expect(
+        L.deploy(admin.address, admin.address, admin.address, ethers.ZeroAddress, admin.address)
+      ).to.be.revertedWithCustomError(L, "ZeroAddress");
+      await expect(
+        L.deploy(admin.address, admin.address, admin.address, admin.address, ethers.ZeroAddress)
       ).to.be.revertedWithCustomError(L, "ZeroAddress");
 
       const { loc } = await deploy();
@@ -230,6 +268,37 @@ describe("Companion contract internals", function () {
       await loc.refund(2n);
       expect(await usd.balanceOf(importer.address)).to.equal(before + LC);
       expect(await loc.escrowBalance()).to.equal(LC); // shipment #1's escrow remains stuck at PickedUp
+    });
+
+    it("forwards escrowed duty to the treasury on settlement", async function () {
+      const { usd, tracker, registry, loc } = await deploy();
+      const id = await makeShipment(tracker);
+      await usd.mint(await loc.getAddress(), LC + 5n);
+      await loc.fund(id, importer.address, LC);
+      await loc.payDuty(id, importer.address, 5n);
+      await loc.setTreasury(outsider.address);
+      await tracker.setPhase(id, Phase.LoadedOnVessel);
+      await registry.anchor(id, DocType.CommercialInvoice, CID.invoice, exporter.address);
+      await registry.anchor(id, DocType.PackingList, CID.packing, exporter.address);
+      await registry.anchor(id, DocType.InspectionCertificate, CID.inspection, admin.address);
+      await registry.anchor(id, DocType.BillOfLadingOrAWB, CID.bl, admin.address);
+
+      const expBefore = await usd.balanceOf(exporter.address);
+      const treBefore = await usd.balanceOf(outsider.address);
+      await loc.settle(id, exporter.address);
+      expect(await usd.balanceOf(exporter.address)).to.equal(expBefore + LC);
+      expect(await usd.balanceOf(outsider.address)).to.equal(treBefore + 5n);
+    });
+
+    it("cannot settle a refunded (reclaimed) L/C", async function () {
+      const { usd, tracker, loc } = await deploy();
+      const id = await makeShipment(tracker);
+      await usd.mint(await loc.getAddress(), LC);
+      await loc.fund(id, importer.address, LC);
+      await tracker.setPhase(id, Phase.LCFunded);
+      await time.increaseTo(Number((await tracker.getShipment(id)).deadline) + 1);
+      await loc.refund(id);
+      await expect(loc.settle(id, exporter.address)).to.be.revertedWithCustomError(loc, "AlreadySettled");
     });
 
     it("exposes the LC and treasury setters", async function () {

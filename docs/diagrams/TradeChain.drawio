@@ -251,7 +251,7 @@
         <mxCell id="we3" value="no shipment before deadline" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;dashed=1;" edge="1" parent="1" source="S3" target="E3">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="OFL" value="Off-chain (consortium IPFS): each role (exporter, importer, bank, logistics, verifier) runs its own node. The issuing role adds the document to its node, the CID is anchored on-chain (DocumentRegistry), and the CID is replicated/pinned to the other nodes so any party can retrieve it." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;dashed=1;" vertex="1" parent="1">
+        <mxCell id="OFL" value="Off-chain (consortium IPFS, private swarm): each role (exporter, importer, bank, logistics, verifier) runs its own node. The issuing role adds the document to its node, the CID is anchored on-chain (DocumentRegistry), and the CID is manually pinned to the other nodes so any party can retrieve it. One CID per (shipment, docType); no contract change." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;dashed=1;" vertex="1" parent="1">
           <mxGeometry x="800" y="650" width="350" height="120" as="geometry" />
         </mxCell>
       </root>

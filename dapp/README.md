@@ -47,8 +47,12 @@ Out-of-band uploads:
 ```bash
 node scripts/ipfs-add.js path/to/document.pdf                                   # default node
 node scripts/ipfs-add.js path/to/document.pdf --api /ip4/127.0.0.1/tcp/5011     # a specific node
+node scripts/ipfs-pin.js bafy... --api /ip4/127.0.0.1/tcp/5011                  # replicate across nodes
 node scripts/ipfs-add.js path/to/document.pdf --pinata                          # optional hosted
 ```
+
+Full setup (per-role nodes, private swarm key, pin/retrieve flow):
+[`../docs/IPFS_CONSORTIUM.md`](../docs/IPFS_CONSORTIUM.md).
 
 > **Limitations.** CIDs are public on-chain, so per-role nodes give *ownership/availability*, not
 > *confidentiality*: use a **private swarm** and/or encrypt before pinning if documents are

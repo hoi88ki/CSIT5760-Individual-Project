@@ -89,10 +89,12 @@ every replica serves the same bytes, so there is exactly **one CID per `(shipmen
 **no contract change** is needed for this topology.
 
 Only CIDs are stored on-chain, so gas is constant-bounded per document and independent of file
-size. `scripts/ipfs-add.js` (with `--api <multiaddr>`) and the DApp's per-role node field
-(`src/ipfs.js`) target the active role's node. The React DApp reads on-chain state and calls the
-core directly.
+size. `scripts/ipfs-add.js` (with `--api <multiaddr>`) uploads to a role's node,
+`scripts/ipfs-pin.js` replicates a CID across nodes, and the DApp's per-role node field
+(`src/ipfs.js`) targets the active role's node. The React DApp reads on-chain state and calls the
+core directly. Setup and the pin/retrieve flow are in [`IPFS_CONSORTIUM.md`](./IPFS_CONSORTIUM.md).
 
-**Limitations.** CIDs are public on-chain, so per-role nodes give ownership/availability, not
-confidentiality — use a private swarm and/or encrypt before pinning for sensitive documents.
-Availability depends on replication: an unpinned CID is unfetchable once its only holder is offline.
+**Limitations.** CIDs are public on-chain, so per-role nodes **plus a private swarm** give
+consortium-only retrieval, not cryptographic secrecy — encrypt before pinning if stronger
+confidentiality is required. Availability depends on replication: an unpinned CID is unfetchable
+once its only holder is offline.

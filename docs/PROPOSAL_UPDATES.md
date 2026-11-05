@@ -57,11 +57,20 @@ Also add a phrase to §5 `DocumentRegistry.sol`: "per `DocType`, records the CID
 **Change to:** replace the single-node / Pinata wording with a **per-role consortium** model:
 > "**IPFS — one node per role (optional private swarm).** Each participant (exporter, importer, bank, logistics, verifier) runs its own kubo node. The issuing role adds the document to its own node; the on-chain record stores only the **CID** (one CID per `(shipment, DocType)`). The CID is then **replicated/pinned** to the counterparties' nodes (via a private swarm and/or IPFS Cluster / explicit pinning), so any replica can serve the same bytes. Because CIDs are content-addressed, integrity is guaranteed regardless of which node responds, and *no per-role on-chain records are needed*."
 
-Notes to include (and to state as limitations):
-- **Confidentiality is not provided by multi-node alone** — CIDs are public on-chain. Use a **private swarm** and/or encrypt before pinning if documents are commercially sensitive.
-- **Availability** depends on replication: without pinning, a CID becomes unfetchable when the only holding node is offline.
-- **Pinata is dropped** in this model (it is a single hosted provider); it may remain as an optional convenience only.
-- **No contract change is required** — the contracts already store only CIDs and are agnostic to the IPFS topology.
+**Confirmed design (see [`IPFS_CONSORTIUM.md`](./IPFS_CONSORTIUM.md)):**
+- **Replication = shared private swarm + manual pin.** Each role runs its own kubo node; nodes join
+  a **private swarm** (`swarm.key`), and after a CID is anchored on-chain every counterparty that
+  needs the document runs `ipfs pin add <cid>` (helper: `scripts/ipfs-pin.js`).
+- **Confidentiality = private swarm only.** Retrieval is restricted to consortium members. This is
+  *not* cryptographic secrecy: CIDs are public on-chain, so a leaked key or the bytes themselves
+  defeat it. Encryption before pinning is out of scope.
+- **Availability requires pinning** — an unpinned CID is unfetchable once its only holder is offline.
+- **Pinata is dropped** in this model (single hosted provider); it remains an optional convenience.
+- **No contract change is required** — the contracts store only CIDs and are agnostic to the topology.
+
+**Other values confirmed with the author:** the proposal should state **≥ 90 % statement/branch
+coverage with 0 High Slither findings** (Medium triaged), and **seven** document types including
+**Customs Clearance**.
 
 ### B.9 — "Immutable" vs revocation  *(see how the proposal was updated)*
 > Note: this item is about on-chain **wording** (immutability vs revocation), not IPFS. It pairs
@@ -135,15 +144,11 @@ You applied most of A.1–A.6 and B.8/B.10. The following are **still outstandin
 | R9 | §4 **Incoterms Enforcement** bullet | "ownership transfer" → "**title (document-of-title) transfer**" (consistent with A.1). |
 | R10 | §5.1 *Architecture or Workflow* | Still empty — insert the two pages of [`docs/diagrams/TradeChain.drawio`](./diagrams/TradeChain.drawio). |
 
-### Clarifications requested
+### Clarifications — resolved
 
-1. **IPFS replication mechanism** — is a shared **private swarm** enough for the demo, or do you
-   want **IPFS Cluster** (automated pinning/replication)? The current DApp only needs a per-role
-   node endpoint; Cluster is additional infrastructure.
-2. **Confidentiality** — CIDs are public on-chain. Do you accept consortium-only retrieval via a
-   **private swarm**, or should we add **encryption before pinning** (earlier Q13 said no
-   encryption)?
-3. **Coverage / Slither bar** — confirm the target: **≥ 90 %** branch and **fail on High only**?
-   (The repo is at ~87 % branch today and can be lifted to ≥ 90 %.)
-4. **Document count** — confirm **seven** `DocType`s (add Customs Clearance to §4's off-chain list)
-   so the proposal and the code agree.
+| # | Question | Decision |
+|---|----------|----------|
+| 1 | IPFS replication | **Private swarm + manual pin** (`scripts/ipfs-pin.js`); no IPFS Cluster. |
+| 2 | Confidentiality | **Private swarm only** (consortium members); encryption out of scope. |
+| 3 | Quality bar | **≥ 90 % branch/statement coverage, 0 High Slither findings** (Medium triaged). Implemented: 100 % statements / **92.6 % branch** / 100 % functions / 100 % lines; CI fails on High. |
+| 4 | Document count | **Seven** `DocType`s incl. **Customs Clearance** (add it to §4's off-chain list). |

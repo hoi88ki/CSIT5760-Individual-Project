@@ -24,6 +24,8 @@ describe("Token units", function () {
 
       await usd.mint(other.address, 123n);
       expect(await usd.balanceOf(other.address)).to.equal(123n);
+      expect(await usd.supportsInterface("0x7965db0b")).to.equal(true); // AccessControl
+      expect(await usd.supportsInterface("0xffffffff")).to.equal(false);
 
       await expect(usd.connect(outsider).mint(outsider.address, 1n)).to.be.revertedWithCustomError(
         usd,
