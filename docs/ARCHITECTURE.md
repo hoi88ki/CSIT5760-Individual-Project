@@ -55,10 +55,10 @@ Ids are monotonic (`_nextOrderId`, `_nextShipmentId`, starting at 1); shipment i
 | `createShipment(orderId, invoiceCID, packingCID)` | ordered Exporter | order unfulfilled, before deadline | shipment + invoice/packing anchors + title token minted to core |
 | `openLetterOfCredit(id)` | Importer (buyer) | phase `Created`, token approved | escrows the L/C in `TradeUSD` (in `LetterOfCredit`) |
 | `anchorDocument(id, docType, cid)` | per-DocType role | phase ≥ `LCFunded`, anchorable type | anchors once; verified |
-| `confirmPickup(id)` | Logistics | phase `LCFunded`, pickup docs present | → `PickedUp`; risk→importer; **EXW pays** |
-| `confirmVesselLoading(id, blCid)` | Logistics | phase `PickedUp`, loading docs present | anchors B/L, sets title `tokenURI` → `LoadedOnVessel`; **FOB/CIF pay** |
-| `payCustomsDuty(id, amount)` | Exporter (DDP) / Importer | not paid, phase ≤ `Delivered` | escrows duty (0 allowed) |
-| `confirmFinalDelivery(id)` | Importer (buyer) | phase `LoadedOnVessel`, delivery docs present | → `Delivered`, transfers title; **DDP pays** |
+| `confirmPickup(id)` | Logistics | phase `LCFunded`, pickup docs present | → `PickedUp`; **EXW**: risk→importer and pays |
+| `confirmVesselLoading(id, blCid)` | Logistics | phase `PickedUp`, loading docs present | anchors B/L, sets title `tokenURI` → `LoadedOnVessel`; **FOB/CIF**: risk→importer and pay |
+| `payCustomsDuty(id, amount)` | Exporter (DDP) / Importer | not paid, phase ≤ `Delivered`, L/C not yet paid | escrows duty (0 allowed); reverts `LCAlreadySettled` after payout |
+| `confirmFinalDelivery(id)` | Importer (buyer) | phase `LoadedOnVessel`, delivery docs present | → `Delivered`, transfers title; **DDP**: risk→importer and pays |
 | `forceFinalizeDelivery(id)` | Bank | phase `LoadedOnVessel`, docs complete | same, bypassing a stalling importer |
 | `reclaimExpiredLC(id)` | Importer / Bank / admin | past deadline, phase `LCFunded` | refunds escrow → `Reclaimed` |
 | `revokeDocument(id, docType)` | issuer or admin | document exists, verified | clears `verified` (invalid at payout) |

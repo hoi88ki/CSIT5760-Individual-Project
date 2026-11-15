@@ -54,6 +54,7 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
     error NotReclaimAuthority(address caller);
     error ArrayLengthMismatch();
     error NotTokenAdmin();
+    error LCAlreadySettled(uint256 id);
 
     // ---------------------------------------------------------------------
     // Events
@@ -197,7 +198,7 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
     // Custody milestones
     // ---------------------------------------------------------------------
 
-    /// @notice Logistics confirms pickup. Risk moves to the importer; EXW pays out here.
+    /// @notice Logistics confirms pickup. Under EXW risk moves to the importer and the L/C pays out.
     function confirmPickup(uint256 id) external onlyRole(ROLE_LOGISTICS) {
         TradeTypes.Shipment memory s = _requireActive(id);
         if (s.phase != TradeTypes.Phase.LCFunded) revert InvalidState(id, TradeTypes.Phase.LCFunded, s.phase);
@@ -205,14 +206,18 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
         complianceEngine.requireCompliant(id, s.term, TradeTypes.Phase.PickedUp);
 
         shipmentTracker.setPhase(id, TradeTypes.Phase.PickedUp);
-        shipmentTracker.setRiskHolder(id, s.importer);
+        // Risk passes to the importer at pickup under EXW only; FOB/CIF pass it on the vessel and
+        // DDP at destination (see confirmVesselLoading / _finalizeDelivery).
+        if (s.term == TradeTypes.Incoterm.EXW) {
+            shipmentTracker.setRiskHolder(id, s.importer);
+        }
         emit MilestoneReached(id, TradeTypes.Phase.PickedUp, msg.sender);
 
         if (s.term == TradeTypes.Incoterm.EXW) _triggerSettlement(id);
     }
 
     /// @notice Logistics confirms loading, anchors the B/L (or AWB) and sets the title URI.
-    ///         FOB and CIF pay out here.
+    ///         Under FOB/CIF risk moves to the importer and the L/C pays out here.
     function confirmVesselLoading(uint256 id, string calldata blCid) external onlyRole(ROLE_LOGISTICS) {
         TradeTypes.Shipment memory s = _requireActive(id);
         if (s.phase != TradeTypes.Phase.PickedUp) revert InvalidState(id, TradeTypes.Phase.PickedUp, s.phase);
@@ -222,6 +227,10 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
         complianceEngine.requireCompliant(id, s.term, TradeTypes.Phase.LoadedOnVessel);
 
         shipmentTracker.setPhase(id, TradeTypes.Phase.LoadedOnVessel);
+        // FOB/CIF transfer risk on the vessel (the payout milestone); EXW already passed it at pickup.
+        if (s.term == TradeTypes.Incoterm.FOB || s.term == TradeTypes.Incoterm.CIF) {
+            shipmentTracker.setRiskHolder(id, s.importer);
+        }
         emit MilestoneReached(id, TradeTypes.Phase.LoadedOnVessel, msg.sender);
 
         if (s.term == TradeTypes.Incoterm.FOB || s.term == TradeTypes.Incoterm.CIF) _triggerSettlement(id);
@@ -235,6 +244,10 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
         if (uint8(s.phase) < uint8(TradeTypes.Phase.LCFunded) || uint8(s.phase) > uint8(TradeTypes.Phase.Delivered)) {
             revert InvalidStateRange(id, s.phase);
         }
+        // Duty is forwarded to the treasury only inside `LetterOfCredit.settle`. Once the L/C has been
+        // paid (EXW at pickup, FOB/CIF at loading), escrowing duty here would lock it forever, so it
+        // must be paid before the payout milestone.
+        if (letterOfCredit.isPaid(id)) revert LCAlreadySettled(id);
 
         if (amount > 0) settlementToken.safeTransferFrom(msg.sender, address(letterOfCredit), amount);
         letterOfCredit.payDuty(id, msg.sender, amount);
@@ -266,9 +279,12 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
             hasRole(DEFAULT_ADMIN_ROLE, msg.sender);
         if (!authorised) revert NotReclaimAuthority(msg.sender);
 
+        LetterOfCredit.LC memory lc = letterOfCredit.getLC(id);
+        uint256 dutyRefund = lc.dutyPaid ? lc.dutyAmount : 0;
+
         letterOfCredit.refund(id);
         shipmentTracker.setPhase(id, TradeTypes.Phase.Reclaimed);
-        emit LCReclaimed(id, s.importer, s.lcAmount, 0);
+        emit LCReclaimed(id, s.importer, s.lcAmount, dutyRefund);
     }
 
     /// @notice Revokes a document: the original issuer or the admin.
@@ -308,6 +324,10 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
         complianceEngine.requireCompliant(id, s.term, TradeTypes.Phase.Delivered);
 
         shipmentTracker.setPhase(id, TradeTypes.Phase.Delivered);
+        // Under DDP risk passes only on delivery at destination.
+        if (s.term == TradeTypes.Incoterm.DDP) {
+            shipmentTracker.setRiskHolder(id, s.importer);
+        }
         shipmentTracker.transferTitle(id, s.importer);
         emit MilestoneReached(id, TradeTypes.Phase.Delivered, actor);
         emit TitleTransferred(id, address(this), s.importer);

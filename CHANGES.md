@@ -5,6 +5,22 @@ Authoritative design rationale stays in [`docs/DESIGN_DECISIONS.md`](./docs/DESI
 
 ---
 
+## 2026-11-15 — Post-review correctness fixes
+
+A focused review of the contract suite surfaced three behavioural issues that were fixed, each with a
+regression test. Six contracts, the deployment addresses and the public interface are unchanged.
+
+| # | Issue | Fix | File | Test |
+|---|-------|-----|------|------|
+| 1 | **Risk holder ignored the Incoterm.** `confirmPickup` moved `riskHolder` to the importer for *every* Incoterm, contradicting the documented risk-transfer milestones (EXW at pickup, FOB/CIF on the vessel, DDP at destination). | `riskHolder` now moves at the correct milestone: EXW in `confirmPickup`, FOB/CIF in `confirmVesselLoading`, DDP in `_finalizeDelivery`. | `contracts/TradeChainCore.sol` | `Incoterms.e2e.test.js` ("FOB — risk passes … on the vessel", "DDP — risk passes only at final delivery") |
+| 2 | **Duty escrow could be permanently stranded.** `payCustomsDuty` accepted a payment after the L/C had already paid out (EXW at pickup, FOB/CIF at loading). Since only `LetterOfCredit.settle` forwards duty to the treasury, that escrow had no exit path and locked funds forever. | `payCustomsDuty` reverts with the new `LCAlreadySettled(id)` once `letterOfCredit.isPaid(id)`. | `contracts/TradeChainCore.sol` | `AccessControl.test.js` ("cannot escrow duty once the L/C has been paid") |
+| 3 | **`LCReclaimed` always reported `dutyRefund = 0`**, even when duty had been escrowed and refunded to its payer. | The event now reports the actual duty refunded (read from the L/C before `refund`). | `contracts/TradeChainCore.sol` | `Neutrality.test.js` (`withArgs(..., LC, 10n)`) |
+
+Verification after the fixes: **87 passing** tests · coverage **100 % statements · 93.08 % branch ·
+100 % functions · 100 % lines** · `solhint` clean.
+
+---
+
 ## 2026-11-06 — Final proposal alignment, Sepolia deploy/verify, clean-up
 
 ### 1. Proposal review (final version)
@@ -70,7 +86,10 @@ Deployed and **verified all six contracts** on Ethereum Sepolia. Record:
 | `LetterOfCredit` | `0x980A395218D6349a501508e4264b8b868c6F42AA` |
 | `TradeUSD` | `0x1a2372BAEfb7bF6F50cafE08cc62EB32BB327ac4` |
 
-Deployer: `0xCE4b0826b1B5d4bEA67EED5212Ae0AA5ec6c8664`.
+Deployer: `0xCE4b0826b1B5d4bEA67EED5212Ae0AA5ec6c8664`. Creation transactions:
+`TradeUSD` `0xae37de9a9ffd296210c9b6105631d1087594519d693cdbeb573a2aefb0bb0ae4` (block 12070799);
+`TradeChainCore` `0xbd8908fb8c9a10917bee57476fef25299b353ddda225d86f30fb69f3e43738c8` (block 12070801,
+which also created the four companions in the constructor).
 
 > **Note.** On a single-account network every role defaults to the deployer. To give roles distinct
 > wallets, set `TRADECHAIN_EXPORTER` … `TRADECHAIN_VERIFIER` and re-run `scripts/deploy.js`.

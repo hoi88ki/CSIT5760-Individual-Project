@@ -91,6 +91,18 @@ describe("Access control & state-machine guards", function () {
         env.core.connect(env.importer).payCustomsDuty(shipmentId, 1n)
       ).to.be.revertedWithCustomError(env.core, "InvalidStateRange");
     });
+
+    it("cannot escrow duty once the L/C has been paid (EXW pays at pickup)", async function () {
+      const env = await loadFixture(fixture);
+      const { shipmentId } = await createOrderAndShipment(env, { term: Incoterm.EXW });
+      await fundLC(env, shipmentId);
+
+      // EXW pays out at pickup, so escrowing duty afterwards would strand it in LetterOfCredit.
+      await env.core.connect(env.logistics).confirmPickup(shipmentId);
+      await expect(
+        env.core.connect(env.importer).payCustomsDuty(shipmentId, 1n)
+      ).to.be.revertedWithCustomError(env.core, "LCAlreadySettled");
+    });
   });
 
   describe("state-machine order", function () {

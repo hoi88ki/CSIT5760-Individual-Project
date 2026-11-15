@@ -141,7 +141,9 @@ Anchors are **anchor-once-then-lock**; a CID can never be replaced. The issuer (
 
 - `Settled` = payout complete **and** title transferred.
 - `Reclaimed` is terminal: the importer's escrow is returned because the exporter never shipped.
-- `riskHolder` starts at the exporter and moves to the importer at the risk-transfer milestone.
+- `riskHolder` starts at the exporter and moves to the importer at each Incoterm's risk-transfer
+  milestone: **EXW** at `confirmPickup`, **FOB/CIF** at `confirmVesselLoading`, **DDP** at
+  `confirmFinalDelivery`.
 
 ### 3.5 Incoterm settlement & document matrix
 
@@ -187,7 +189,7 @@ Bank       forceFinalizeDelivery(id)                             → if the impo
 │   │   └── TradeUSD.sol                # ERC-20 stablecoin (role-gated mint)
 │   ├── libraries/TradeTypes.sol        # shared enums/structs
 │   └── mocks/MaliciousReentrancy.sol   # adversarial settlement token (tests only)
-├── test/                               # 84-test Hardhat suite
+├── test/                               # 87-test Hardhat suite
 │   ├── helpers/fixture.js
 │   ├── Order.test.js · DocumentRegistry.test.js · ComplianceEngine.test.js
 │   ├── Incoterms.e2e.test.js · Neutrality.test.js · AccessControl.test.js
@@ -239,8 +241,8 @@ Bank       forceFinalizeDelivery(id)                             → if the impo
 ```bash
 npm install
 npx hardhat compile
-npx hardhat test                     # 84 passing
-npx hardhat coverage                 # 100 % stmts · 92.74 % branch · 100 % funcs · 100 % lines
+npx hardhat test                     # 87 passing
+npx hardhat coverage                 # 100 % stmts · 93.08 % branch · 100 % funcs · 100 % lines
 npm run gas                          # optional gas report
 ```
 
@@ -308,6 +310,10 @@ Etherscan (append `#code` to each address).
 
 Deployer: `0xCE4b0826b1B5d4bEA67EED5212Ae0AA5ec6c8664`.
 
+Creation transactions: `TradeUSD` `0xae37de9a9ffd296210c9b6105631d1087594519d693cdbeb573a2aefb0bb0ae4`
+(block 12070799) and `TradeChainCore` `0xbd8908fb8c9a10917bee57476fef25299b353ddda225d86f30fb69f3e43738c8`
+(block 12070801) — the core's transaction also created the four companion contracts in its constructor.
+
 ## 8. Step-by-step Verification Walkthrough
 
 Run these later to confirm every claim. Each step lists the expected result.
@@ -323,8 +329,8 @@ npx solhint "contracts/**/*.sol"
 ```
 
 - [ ] `compile` → `Compiled 37 Solidity files successfully`
-- [ ] `test` → `84 passing`
-- [ ] `coverage` → **100 % statements · 92.74 % branch · 100 % functions · 100 % lines** (mocks excluded)
+- [ ] `test` → `87 passing`
+- [ ] `coverage` → **100 % statements · 93.08 % branch · 100 % functions · 100 % lines** (mocks excluded)
 - [ ] `solhint` → no errors
 
 ### B. Local end-to-end demo (all four Incoterms)
@@ -405,7 +411,7 @@ npx hardhat run scripts/verify.js --network sepolia
 | Modules | Internal guards reached directly (funding/duty/settlement ordering, reclaim window) | `Modules.test.js` |
 | Security | Adversarial settlement token; Slither + coverage in CI | Single payout; no High findings |
 
-Current result: **84 tests passing · 100 % statements · 92.74 % branches · 100 % functions ·
+Current result: **87 tests passing · 100 % statements · 93.08 % branches · 100 % functions ·
 100 % lines** (mocks excluded via `.solcover.js`).
 
 ## 11. CI / Static Analysis
@@ -419,7 +425,7 @@ security criteria and its report is retained as a build artifact.
 | Phase | Activities | Deliverable | Status |
 |-------|------------|-------------|--------|
 | **Phase 1** | Develop the six contracts + tests | Compiling, tested suite | ✅ done |
-| **Phase 2** | Security review, adversarial tests, coverage | ≥ 90 % branch coverage, Slither report | ✅ done (100 % stmts / 92.74 % branch) |
+| **Phase 2** | Security review, adversarial tests, coverage | ≥ 90 % branch coverage, Slither report | ✅ done (100 % stmts / 93.08 % branch) |
 | **Phase 3** | Sepolia deploy + verify, React DApp, demo video, report | Verified contracts, DApp, report | 🟡 **deploy + verify done**; video/report pending |
 
 Progress log: see `git log --oneline` and [`CHANGES.md`](./CHANGES.md).

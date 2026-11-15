@@ -155,6 +155,34 @@ describe("Incoterm end-to-end flows", function () {
     expect((await env.core.getLC(id)).dutyAmount).to.equal(0n);
   });
 
+  it("FOB — risk passes to the importer on the vessel, not at pickup", async function () {
+    const env = await loadFixture(fixture);
+    const id = await setup(env, Incoterm.FOB);
+    await env.core.connect(env.verifier).anchorDocument(id, DocType.InspectionCertificate, CID.inspection);
+
+    await env.core.connect(env.logistics).confirmPickup(id);
+    expect((await env.core.getShipment(id)).riskHolder).to.equal(env.exporter.address);
+
+    await env.core.connect(env.logistics).confirmVesselLoading(id, CID.bl);
+    expect((await env.core.getShipment(id)).riskHolder).to.equal(env.importer.address);
+  });
+
+  it("DDP — risk passes only at final delivery", async function () {
+    const env = await loadFixture(fixture);
+    const id = await setup(env, Incoterm.DDP);
+
+    await env.core.connect(env.verifier).anchorDocument(id, DocType.InspectionCertificate, CID.inspection);
+    await env.core.connect(env.exporter).anchorDocument(id, DocType.CertificateOfOrigin, CID.coo);
+    await env.core.connect(env.logistics).confirmPickup(id);
+    await env.core.connect(env.logistics).confirmVesselLoading(id, CID.bl);
+    expect((await env.core.getShipment(id)).riskHolder).to.equal(env.exporter.address);
+
+    await env.core.connect(env.verifier).anchorDocument(id, DocType.CustomsClearance, CID.clearance);
+    await env.core.connect(env.exporter).payCustomsDuty(id, 0);
+    await env.core.connect(env.importer).confirmFinalDelivery(id);
+    expect((await env.core.getShipment(id)).riskHolder).to.equal(env.importer.address);
+  });
+
   it("rejects loading before pickup", async function () {
     const env = await loadFixture(fixture);
     const id = await setup(env, Incoterm.FOB);

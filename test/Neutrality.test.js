@@ -72,7 +72,9 @@ describe("Neutrality & timeout safeguards", function () {
       await env.core.connect(env.importer).payCustomsDuty(shipmentId, 10n);
       await time.increaseTo(Number((await env.core.getShipment(shipmentId)).deadline) + 1);
       const before = await env.token.balanceOf(env.importer.address);
-      await env.core.connect(env.importer).reclaimExpiredLC(shipmentId);
+      await expect(env.core.connect(env.importer).reclaimExpiredLC(shipmentId))
+        .to.emit(env.core, "LCReclaimed")
+        .withArgs(shipmentId, env.importer.address, LC, 10n);
       expect(await env.token.balanceOf(env.importer.address)).to.equal(before + LC + 10n);
     });
 

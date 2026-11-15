@@ -27,6 +27,7 @@
 | **Settlement stall (exporter)** | Exporter never ships | Deadline reclaim by importer/bank/admin | `Neutrality` |
 | **Unauthorized milestone** | Wrong role advances the shipment or mints | `onlyRole` + per-shipment importer/exporter checks | `AccessControl` |
 | **Unauthorized title transfer** | Holder sells/endorses the e-B/L before settlement | `ShipmentTracker._update` rejects public ERC-721 transfers; only the core can `transferTitle` | `Tokens.test.js` (public `transferFrom` reverts) |
+| **Stranded duty escrow** | Duty escrowed *after* the L/C has paid out would never be forwarded to the treasury (only `LetterOfCredit.settle` releases it) and would be locked forever | `TradeChainCore.payCustomsDuty` reverts `LCAlreadySettled` once `LetterOfCredit.isPaid(id)` | `AccessControl.test.js` ("cannot escrow duty once the L/C has been paid") |
 | **Bad input** | Empty CID, zero/oversized payment, past deadline | Custom-error guards + allowance failures | `Order`, `DocumentRegistry`, `Modules` |
 | **Integer overflow** | Counter/amount overflow | Solidity 0.8 checked arithmetic | compiler default |
 
@@ -38,8 +39,8 @@
 ## 4. Test & coverage evidence
 
 ```
-npx hardhat test        # 84 passing
-npx hardhat coverage    # statements 100% · branches 92.74% · functions 100% · lines 100%
+npx hardhat test        # 87 passing
+npx hardhat coverage    # statements 100% · branches 93.08% · functions 100% · lines 100%
 ```
 
 Mocks are excluded from the coverage denominator via `.solcover.js`.

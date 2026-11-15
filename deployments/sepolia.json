@@ -14,6 +14,17 @@
   "documentRegistry": "0xFf79f12350DD6061A36d7268f5Ccb51764caA301",
   "complianceEngine": "0xC62187D99Fd6115eE8010d263230e305907b4ca5",
   "letterOfCredit": "0x980A395218D6349a501508e4264b8b868c6F42AA",
+  "creationTransactions": {
+    "tradeUSD": {
+      "txHash": "0xae37de9a9ffd296210c9b6105631d1087594519d693cdbeb573a2aefb0bb0ae4",
+      "block": 12070799
+    },
+    "tradeChainCore": {
+      "txHash": "0xbd8908fb8c9a10917bee57476fef25299b353ddda225d86f30fb69f3e43738c8",
+      "block": 12070801,
+      "note": "Deploying TradeChainCore also created ShipmentTracker, DocumentRegistry, ComplianceEngine and LetterOfCredit in its constructor (same transaction)."
+    }
+  },
   "roles": {
     "ROLE_EXPORTER": "0xCE4b0826b1B5d4bEA67EED5212Ae0AA5ec6c8664",
     "ROLE_IMPORTER": "0xCE4b0826b1B5d4bEA67EED5212Ae0AA5ec6c8664",
