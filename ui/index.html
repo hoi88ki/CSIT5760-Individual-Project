@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TradeChain · Flow Console</title>
+<style>
+  :root {
+    --bg: #0e1116; --panel: #161b23; --panel2: #1c232e; --line: #2a3340;
+    --text: #e6ebf2; --muted: #93a1b3; --accent: #4da3ff; --ok: #3ecf8e;
+    --warn: #ffb454; --bad: #ff6b6b; --chip: #232c39;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  header {
+    padding: 14px 20px; border-bottom: 1px solid var(--line);
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: center; background: var(--panel);
+    position: sticky; top: 0; z-index: 5;
+  }
+  header h1 { font-size: 18px; margin: 0; }
+  header h1 span { color: var(--accent); }
+  header .spacer { flex: 1; }
+  .badge { padding: 3px 10px; border-radius: 999px; background: var(--chip); color: var(--muted); font-size: 12px; }
+  .badge.ok { color: var(--ok); } .badge.warn { color: var(--warn); } .badge.bad { color: var(--bad); }
+  main { padding: 18px; display: grid; gap: 16px; max-width: 1280px; margin: 0 auto; }
+  section {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px;
+  }
+  section h2 { font-size: 14px; margin: 0 0 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  section h3 { font-size: 13px; margin: 14px 0 6px; color: var(--accent); }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px; }
+  input, select {
+    width: 100%; padding: 7px 9px; background: var(--panel2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 7px; font-size: 13px;
+  }
+  input[type="file"] { padding: 5px; }
+  button {
+    margin: 8px 6px 0 0; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line);
+    background: #223; color: var(--text); cursor: pointer; font-size: 13px;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #06121f; font-weight: 600; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .row > div { flex: 1 1 150px; }
+  pre {
+    background: #0b0f14; border: 1px solid var(--line); border-radius: 8px; padding: 10px;
+    overflow: auto; max-height: 260px; font-size: 12px; white-space: pre-wrap; word-break: break-word;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 5px 7px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; }
+  .steps { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+  .step {
+    padding: 5px 11px; border-radius: 999px; background: var(--chip); color: var(--muted); font-size: 12px;
+    border: 1px solid var(--line);
+  }
+  .step.done { background: #12331f; color: var(--ok); border-color: #1f5c39; }
+  .step.now { background: #0d2a44; color: var(--accent); border-color: var(--accent); font-weight: 600; }
+  .step.dead { background: #3a1d1d; color: var(--bad); border-color: #6b2b2b; }
+  .guide li { margin: 3px 0; }
+  .guide .who { color: var(--accent); font-weight: 600; }
+  .guide li.done { color: var(--muted); text-decoration: line-through; }
+  .guide li.next { color: var(--text); }
+  .guide li.next::before { content: "▶ "; color: var(--ok); }
+  .kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 6px 14px; font-size: 13px; }
+  .kv b { color: var(--muted); font-weight: 500; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+  .hint { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
+  .pill { display: inline-block; padding: 1px 8px; margin-left: 6px; border-radius: 999px; background: var(--chip); font-size: 11px; color: var(--muted); }
+  .mono { font-family: Consolas, "Courier New", monospace; font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Trade<span>Chain</span> · Flow Console</h1>
+  <span id="net" class="badge">not connected</span>
+  <span id="acct" class="badge">—</span>
+  <span id="roles" class="badge">no roles loaded</span>
+  <span class="spacer"></span>
+  <button id="btnConnect" class="primary">Connect wallet</button>
+</header>
+
+<main>
+  <!-- 0. connection ------------------------------------------------------- -->
+  <section>
+    <h2>0 · Connection &amp; deployment</h2>
+    <div class="row">
+      <div><label>TradeChainCore address</label><input id="core" placeholder="0x…" /></div>
+      <div style="max-width:220px"><label>RPC URL (read-only)</label><input id="rpc" value="http://127.0.0.1:8545" /></div>
+      <div style="max-width:200px"><label>Preset</label>
+        <select id="preset">
+          <option value="sepolia">Sepolia (deployed)</option>
+          <option value="localhost">Local Hardhat node</option>
+        </select>
+      </div>
+    </div>
+    <label>Test-only signer private key (local node demos; kept in memory, never saved)</label>
+    <input id="pk" class="mono" placeholder="0x… (optional — used only when no wallet is connected)" />
+    <button id="btnLoad">Load core</button>
+    <button id="btnApprove">Approve TradeUSD (max)</button>
+    <p class="hint">
+      Open this page with <code>npx serve ui</code> / <code>python -m http.server -d ui</code> so the IPFS calls
+      are not blocked by <code>file://</code> CORS. All contract reads work without a wallet.
+    </p>
+  </section>
+
+  <!-- 1. flow stepper ----------------------------------------------------- -->
+  <section>
+    <h2>1 · Shipment lifecycle</h2>
+    <div id="stepper" class="steps"></div>
+    <div class="kv" id="flowMeta"></div>
+    <p class="hint">
+      Payout, risk transfer and the title NFT all move at the Incoterm milestone:
+      <b>EXW</b> at pickup · <b>FOB/CIF</b> on the vessel · <b>DDP</b> at final delivery (after clearance + duty).
+    </p>
+  </section>
+
+  <div class="grid2">
+    <!-- 2. flow guide ------------------------------------------------------ -->
+    <section>
+      <h2>2 · Flow guide (who does what, next)</h2>
+      <ol class="guide" id="guide"></ol>
+      <p class="hint">Tick boxes below are derived from on-chain state for the selected shipment and Incoterm.</p>
+    </section>
+
+    <!-- 3. viewers --------------------------------------------------------- -->
+    <section>
+      <h2>3 · Viewers</h2>
+      <div class="row">
+        <div><label>Order id</label><input id="orderId" value="1" /></div>
+        <div><label>Shipment id</label><input id="shipId" value="1" /></div>
+        <div style="max-width:140px"><label>Incoterm</label>
+          <select id="term"><option>EXW</option><option>FOB</option><option>CIF</option><option>DDP</option></select>
+        </div>
+        <div style="max-width:120px;align-self:flex-end"><button id="btnRefresh" class="primary">Refresh</button></div>
+      </div>
+      <h3>Order</h3><div class="kv" id="orderView">—</div>
+      <h3>Letter of credit &amp; duty</h3><div class="kv" id="lcView">—</div>
+      <h3>Document of title (e-B/L NFT)</h3><div class="kv" id="nftView">—</div>
+    </section>
+  </div>
+
+  <!-- 4. documents -------------------------------------------------------- -->
+  <section>
+    <h2>4 · Documents (IPFS CIDs anchored per role)</h2>
+    <div class="grid2">
+      <div>
+        <table id="docTable">
+          <thead><tr><th>DocType</th><th>Anchored by</th><th>Valid</th><th>Issuer</th><th>CID</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p class="hint">Required set for this Incoterm × phase is marked with ★. Revoked or missing documents block the payout.</p>
+      </div>
+      <div>
+        <label>DocType to anchor</label>
+        <select id="docType"></select>
+        <label>Document CID</label><input id="docCid" placeholder="bafy…" />
+        <label>Optional: upload a file to a kubo node to fill the CID</label>
+        <div class="row">
+          <div><input id="ipfsNode" value="http://127.0.0.1:5001" /></div>
+          <div style="max-width:230px"><input id="ipfsFile" type="file" /></div>
+        </div>
+        <button id="btnAnchor">Anchor document</button>
+        <button id="btnRevoke">Revoke document</button>
+        <button id="btnViewDoc">Open document by CID</button>
+        <p class="hint">Anchoring is role-gated: invoice/packing at shipment creation, Certificate of Origin by the
+        exporter, inspection / insurance / clearance by the verifier, B/L by logistics at loading.</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="grid3">
+    <!-- 5. order & shipment ------------------------------------------------ -->
+    <section>
+      <h2>5 · Order → Shipment</h2>
+      <label>Exporter address</label><input id="exporter" placeholder="0x…" />
+      <div class="row">
+        <div><label>Incoterm</label>
+          <select id="newTerm"><option value="0">EXW</option><option value="1">FOB</option><option value="2">CIF</option><option value="3">DDP</option></select>
+        </div>
+        <div><label>L/C amount (tUSD)</label><input id="lcAmount" value="100000" /></div>
+      </div>
+      <div class="row">
+        <div><label>Deadline (days)</label><input id="days" value="30" /></div>
+        <div><label>Order id</label><input id="shipOrderId" value="1" /></div>
+      </div>
+      <label>Invoice CID</label><input id="invCid" placeholder="bafy…" />
+      <label>Packing-list CID</label><input id="packCid" placeholder="bafy…" />
+      <button id="btnOrder">Importer → createOrder</button>
+      <button id="btnShipment">Exporter → createShipment</button>
+      <button id="btnFund">Importer → openLetterOfCredit</button>
+    </section>
+
+    <!-- 6. milestones ------------------------------------------------------ -->
+    <section>
+      <h2>6 · Milestones &amp; settlement</h2>
+      <label>B/L or AWB CID (anchored by logistics at loading)</label><input id="blCid" placeholder="bafy…" />
+      <button id="btnPickup">Logistics → confirmPickup</button>
+      <button id="btnLoad2">Logistics → confirmVesselLoading</button>
+      <div class="row">
+        <div><label>Duty (tUSD, 0 allowed)</label><input id="duty" value="0" /></div>
+        <div style="max-width:150px;align-self:flex-end"><button id="btnDuty">payCustomsDuty</button></div>
+      </div>
+      <button id="btnDeliver">Importer → confirmFinalDelivery</button>
+      <button id="btnForce">Bank → forceFinalizeDelivery</button>
+      <button id="btnReclaim">Importer/Bank/Admin → reclaimExpiredLC</button>
+    </section>
+
+    <!-- 7. admin ----------------------------------------------------------- -->
+    <section>
+      <h2>7 · Admin &amp; registry</h2>
+      <label>Grant roles (checked against the connected account)</label>
+      <div id="roleBoxes" class="row"></div>
+      <div class="row">
+        <div><label>Grantee address</label><input id="grantee" placeholder="0x…" /></div>
+        <div style="max-width:140px;align-self:flex-end"><button id="btnGrant">grantRoles</button></div>
+      </div>
+      <label>Mint demo tUSD to (admin)</label>
+      <div class="row">
+        <div><input id="mintTo" placeholder="0x…" /></div>
+        <div style="max-width:130px"><input id="mintAmt" value="1000000" /></div>
+        <div style="max-width:120px;align-self:flex-end"><button id="btnMint">mint</button></div>
+      </div>
+      <label>Replace the active DocumentRegistry (admin or ROLE_REGISTRY_ADMIN)</label>
+      <div class="row">
+        <div><input id="newRegistry" placeholder="new DocumentRegistry address (0x…)" /></div>
+        <div style="max-width:150px;align-self:flex-end"><button id="btnSwap">setDocumentRegistry</button></div>
+      </div>
+      <div class="kv" id="regView" style="margin-top:8px">—</div>
+      <p class="hint">A replacement must be a DocumentRegistry bound to this core with matching runtime code
+      (guards against a look-alike faking document validity).</p>
+    </section>
+  </div>
+
+  <!-- 8. log -------------------------------------------------------------- -->
+  <section>
+    <h2>8 · Activity log</h2>
+    <pre id="log">Ready.</pre>
+  </section>
+</main>
+
+<script src="./ethers.umd.min.js"></script>
+<script>
+/* ------------------------------------------------------------------ consts */
+const INCOTERMS = ["EXW", "FOB", "CIF", "DDP"];
+const PHASES = ["Created", "LCFunded", "PickedUp", "LoadedOnVessel", "Delivered", "Settled", "Reclaimed"];
+const DOCTYPES = ["CommercialInvoice", "PackingList", "CertificateOfOrigin", "InspectionCertificate",
+                  "InsuranceCertificate", "BillOfLadingOrAWB", "CustomsClearance"];
+const DOC_ROLE = ["Exporter", "Exporter", "Exporter", "Verifier", "Verifier", "Logistics", "Verifier"];
+const UNIT = 10n ** 6n;
+
+const SEPOLIA = {
+  core: "0x0372C1F622c6b46919a70a89EF85306565Eb98C5",
+  rpc: "https://ethereum-sepolia-rpc.publicnode.com",
+  explorer: "https://sepolia.etherscan.io",
+};
+
+const CORE_ABI = [
+  "function ROLE_EXPORTER() view returns (bytes32)","function ROLE_IMPORTER() view returns (bytes32)",
+  "function ROLE_BANK() view returns (bytes32)","function ROLE_LOGISTICS() view returns (bytes32)",
+  "function ROLE_VERIFIER() view returns (bytes32)","function ROLE_REGISTRY_ADMIN() view returns (bytes32)",
+  "function grantRoles(bytes32[] roles, address[] accounts)",
+  "function setDocumentRegistry(address newRegistry)",
+  "function setModuleRole(address module, bytes32 role, address account, bool granted)",
+  "function mint(address to, uint256 amount)",
+  "function createOrder(address exporter, uint8 term, uint256 lcAmount, uint64 deadline) returns (uint256)",
+  "function createShipment(uint256 orderId, string invoiceCID, string packingListCID) returns (uint256)",
+  "function openLetterOfCredit(uint256 id)","function anchorDocument(uint256 id, uint8 docType, string cid)",
+  "function payCustomsDuty(uint256 id, uint256 amount)","function confirmPickup(uint256 id)",
+  "function confirmVesselLoading(uint256 id, string blCid)","function confirmFinalDelivery(uint256 id)",
+  "function forceFinalizeDelivery(uint256 id)","function reclaimExpiredLC(uint256 id)",
+  "function revokeDocument(uint256 id, uint8 docType)",
+  "function settlementToken() view returns (address)","function shipmentTracker() view returns (address)",
+  "function documentRegistry() view returns (address)","function complianceEngine() view returns (address)",
+  "function letterOfCredit() view returns (address)","function orderCount() view returns (uint256)",
+  "function shipmentCount() view returns (uint256)",
+  "function hasValidDocument(uint256 id, uint8 docType) view returns (bool)",
+  "function requiredDocumentsAt(uint256 id, uint8 phase) view returns (uint8)",
+  "function payoutPhaseOf(uint8 term) view returns (uint8)",
+  "function isCompliant(uint256 id, uint8 phase) view returns (bool)",
+  "function documentRegistryOf(uint256 id, uint8 docType) view returns (address)",
+  "function hasRole(bytes32 role, address account) view returns (bool)",
+  "function getOrder(uint256 orderId) view returns (tuple(uint256 id,address importer,address exporter,uint8 term,uint64 deadline,uint256 lcAmount,uint256 shipmentId,bool fulfilled))",
+  "function getShipment(uint256 id) view returns (tuple(uint256 id,uint256 orderId,address exporter,address importer,uint8 term,uint8 phase,uint64 createdAt,uint64 deadline,uint256 lcAmount,address riskHolder))",
+  "function getLC(uint256 id) view returns (tuple(uint256 shipmentId,uint256 amount,bool funded,bool paid,bool reclaimed,uint256 dutyAmount,bool dutyPaid,address dutyPayer))",
+];
+const TRACKER_ABI = [
+  "function name() view returns (string)","function ownerOf(uint256 tokenId) view returns (address)",
+  "function tokenURI(uint256 tokenId) view returns (string)","function exists(uint256 tokenId) view returns (bool)",
+];
+const REGISTRY_ABI = [
+  "function core() view returns (address)",
+  "function isValid(uint256 id, uint8 docType) view returns (bool)",
+  "function issuerOf(uint256 id, uint8 docType) view returns (address)",
+  "function getDocument(uint256 id, uint8 docType) view returns (tuple(string cid,address issuer,uint64 timestamp,bool verified))",
+  "function DEFAULT_ADMIN_ROLE() view returns (bytes32)",
+];
+const LOC_ABI = ["function treasury() view returns (address)","function escrowBalance() view returns (uint256)"];
+const TOKEN_ABI = ["function approve(address spender, uint256 amount) returns (bool)","function balanceOf(address) view returns (uint256)","function symbol() view returns (string)","function decimals() view returns (uint8)"];
+
+/* ------------------------------------------------------------------ state */
+let provider = null, signer = null, account = "", chainId = 0n;
+let core, tracker, registry, loc, token;
+let roleIds = {}, myRoles = [];
+const registryCache = {};
+const $ = (id) => document.getElementById(id);
+const short = (a) => (a || "").slice(0, 6) + "…" + (a || "").slice(-4);
+const fmt = (v) => ethers.formatUnits(v, 6);
+/** One DocumentRegistry handle per address (the active registry is swappable). */
+function registryAt(addr) {
+  if (!registryCache[addr]) registryCache[addr] = new ethers.Contract(addr, REGISTRY_ABI, signer || provider);
+  return registryCache[addr];
+}
+
+function log(msg, cls) {
+  const t = new Date().toLocaleTimeString();
+  $("log").textContent = `[${t}] ${msg}\n` + $("log").textContent;
+  if (cls) $("log").className = cls;
+}
+
+/* ------------------------------------------------------------- connection */
+async function connect() {
+  try {
+    if (window.ethereum) {
+      provider = new ethers.BrowserProvider(window.ethereum);
+      await provider.send("eth_requestAccounts", []);
+      signer = await provider.getSigner();
+      account = await signer.getAddress();
+    } else if ($("pk").value.trim().startsWith("0x") && $("pk").value.trim().length > 10) {
+      provider = new ethers.JsonRpcProvider($("rpc").value);
+      signer = new ethers.Wallet($("pk").value.trim(), provider);
+      account = await signer.getAddress();
+      log("Using the in-page test signer (local node only).");
+    } else {
+      provider = new ethers.JsonRpcProvider($("rpc").value);
+      signer = null;
+      log("No wallet and no test key — read-only mode.");
+    }
+    const net = await provider.getNetwork();
+    chainId = net.chainId;
+    $("net").textContent = `chain ${chainId}` + (chainId === 11155111n ? " (Sepolia)" : "");
+    $("net").className = "badge " + (chainId === 11155111n || chainId === 31337n ? "ok" : "warn");
+    $("acct").textContent = account ? short(account) : "read-only";
+    if (signer) $("btnConnect").textContent = "Reconnect";
+    await loadCore();
+  } catch (e) { log("connect ✘ " + (e.shortMessage || e.message)); }
+}
+
+async function loadCore() {
+  const addr = $("core").value.trim();
+  if (!ethers.isAddress(addr)) return log("Enter a valid TradeChainCore address.");
+  try {
+    core = new ethers.Contract(addr, CORE_ABI, signer || provider);
+    const [t, r, c, l, tok] = await Promise.all([
+      core.shipmentTracker(), core.documentRegistry(), core.complianceEngine(),
+      core.letterOfCredit(), core.settlementToken(),
+    ]);
+    tracker = new ethers.Contract(t, TRACKER_ABI, signer || provider);
+    registry = registryAt(r);
+    loc = new ethers.Contract(l, LOC_ABI, signer || provider);
+    token = new ethers.Contract(tok, TOKEN_ABI, signer || provider);
+    for (const n of ["ROLE_EXPORTER","ROLE_IMPORTER","ROLE_BANK","ROLE_LOGISTICS","ROLE_VERIFIER","ROLE_REGISTRY_ADMIN"]) {
+      roleIds[n] = await core[n]();
+    }
+    await refreshRoles();
+    $("shipId").value = "1";
+    await refresh();
+    log("Loaded core " + addr);
+  } catch (e) { log("load ✘ " + (e.shortMessage || e.message)); }
+}
+
+async function refreshRoles() {
+  if (!core || !account) { $("roles").textContent = "no roles loaded"; return; }
+  const held = [];
+  for (const n of Object.keys(roleIds)) if (await core.hasRole(roleIds[n], account)) held.push(n.replace("ROLE_", ""));
+  myRoles = held;
+  $("roles").textContent = held.length ? "roles: " + held.join(", ") : "no roles on this account";
+  $("roles").className = "badge " + (held.length ? "ok" : "warn");
+  renderRoleBoxes();
+}
+
+function renderRoleBoxes() {
+  const box = $("roleBoxes"); box.innerHTML = "";
+  for (const n of Object.keys(roleIds)) {
+    const lbl = document.createElement("label");
+    lbl.style.cssText = "flex:0 0 auto;display:flex;align-items:center;gap:5px;margin:6px 10px 0 0";
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.value = n; cb.style.width = "auto"; cb.checked = n === "ROLE_EXPORTER";
+    lbl.appendChild(cb);
+    lbl.appendChild(document.createTextNode(n.replace("ROLE_", "")));
+    box.appendChild(lbl);
+  }
+}
+
+/* ----------------------------------------------------------------- render */
+function stepper(phase, term) {
+  const box = $("stepper"); box.innerHTML = "";
+  PHASES.forEach((p, i) => {
+    const el = document.createElement("span");
+    el.className = "step" + (i === phase ? " now" : i < phase ? " done" : "");
+    if (p === "Reclaimed") el.className = "step" + (phase === 6 ? " dead" : "");
+    const notes = { 2: "EXW pays", 3: "FOB/CIF pay", 4: "DDP pays" };
+    el.textContent = p + (notes[i] ? ` · ${notes[i]}` : "");
+    box.appendChild(el);
+    if (i < PHASES.length - 2) box.appendChild(Object.assign(document.createElement("span"), { textContent: "→", style: "align-self:center;color:#4a5568" }));
+  });
+  const payout = { 0: 2, 1: 3, 2: 3, 3: 4 }[term];
+  $("flowMeta").innerHTML =
+    `<div><b>Incoterm</b> ${INCOTERMS[term] ?? "—"}</div>` +
+    `<div><b>Payout &amp; risk-transfer milestone</b> ${PHASES[payout] ?? "—"}</div>` +
+    `<div><b>Title NFT transfers</b> at final delivery (tokenId = shipment id)</div>`;
+}
+
+function kv(pairs) {
+  return pairs.map(([k, v]) => `<div><b>${k}</b> ${v}</div>`).join("");
+}
+
+async function refresh() {
+  if (!core) return;
+  const idBig = BigInt($("shipId").value.trim() || "1");
+  let s = null;
+  try { s = await core.getShipment(idBig); } catch (e) { /* unknown id on some builds */ }
+  if (!s || s.importer === ethers.ZeroAddress) return renderEmpty(idBig);
+  const id = idBig.toString();
+  try {
+    $("term").value = INCOTERMS[Number(s.term)];
+    stepper(Number(s.phase), Number(s.term));
+
+    // order
+    let orderHtml = "—";
+    try {
+      const o = await core.getOrder(s.orderId);
+      orderHtml = kv([
+        ["id", "#" + o.id], ["importer", short(o.importer)], ["exporter", short(o.exporter)],
+        ["term", INCOTERMS[Number(o.term)]], ["L/C", fmt(o.lcAmount)],
+        ["deadline", new Date(Number(o.deadline) * 1000).toLocaleString()], ["fulfilled", String(o.fulfilled)],
+      ]);
+    } catch {}
+    $("orderView").innerHTML = orderHtml;
+
+    // lc
+    const lc = await core.getLC(BigInt(id));
+    $("lcView").innerHTML = kv([
+      ["funded", String(lc.funded)], ["paid", String(lc.paid)], ["reclaimed", String(lc.reclaimed)],
+      ["amount", fmt(lc.amount)], ["duty", fmt(lc.dutyAmount) + (lc.dutyPaid ? " (paid)" : " (unpaid)")],
+      ["duty payer", lc.dutyPayer === ethers.ZeroAddress ? "—" : short(lc.dutyPayer)],
+    ]);
+
+    // nft
+    let nft = "—";
+    try {
+      if (await tracker.exists(BigInt(id))) {
+        const [owner, uri] = await Promise.all([tracker.ownerOf(BigInt(id)), tracker.tokenURI(BigInt(id))]);
+        const escrowed = owner.toLowerCase() === (await core.getAddress()).toLowerCase();
+        nft = kv([["tokenId", id], ["owner", short(owner) + (escrowed ? " (escrowed by core)" : "")],
+                  ["tokenURI", uri || "—"]]);
+      } else nft = "not minted";
+    } catch { nft = "not minted"; }
+    $("nftView").innerHTML = nft;
+
+    await renderDocs(id, Number(s.term), Number(s.phase));
+    await renderGuide(s, lc);
+    await renderRegistry();
+  } catch (e) { log("refresh ✘ " + (e.shortMessage || e.message)); }
+}
+
+/** Fresh deployment (or an id that does not exist yet): show the flow from the top. */
+async function renderEmpty(idBig) {
+  const term = Math.max(0, INCOTERMS.indexOf($("term").value));
+  stepper(0, term);
+  $("orderView").innerHTML = "no order with this id yet";
+  $("lcView").innerHTML = "not funded";
+  $("nftView").innerHTML = "not minted";
+  const tb = $("docTable").querySelector("tbody"); tb.innerHTML = "";
+  const sel = $("docType"); sel.innerHTML = "";
+  for (let i = 0; i < DOCTYPES.length; i++) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${DOCTYPES[i]}</td><td>${DOC_ROLE[i]}</td><td style="color:var(--bad)">missing</td><td>—</td><td>—</td>`;
+    tb.appendChild(tr);
+    if (i >= 2) {
+      const o = document.createElement("option");
+      o.value = i; o.textContent = `${DOCTYPES[i]} (by ${DOC_ROLE[i]})`;
+      sel.appendChild(o);
+    }
+  }
+  const row = document.createElement("tr");
+  row.innerHTML = `<td colspan="5" style="color:var(--muted)">shipment #${idBig} does not exist yet — create an order and a shipment first</td>`;
+  tb.appendChild(row);
+  const steps = [
+    { who: "Importer", what: "createOrder(exporter, " + INCOTERMS[term] + ", amount, deadline)" },
+    { who: "Exporter", what: "createShipment(orderId, invoiceCID, packingListCID) → title NFT minted to the core" },
+    { who: "Importer", what: "openLetterOfCredit(id) → TradeUSD escrowed" },
+  ];
+  $("guide").innerHTML = steps.map((st, i) =>
+    `<li class="${i === 0 ? "next" : ""}"><span class="who">${st.who}</span> — ${st.what}</li>`).join("");
+  await renderRegistry();
+}
+
+async function renderDocs(id, term, phase) {
+  const tb = $("docTable").querySelector("tbody"); tb.innerHTML = "";
+  const mask = Number(await core.requiredDocumentsAt(BigInt(id), phase));
+  const sel = $("docType"); sel.innerHTML = "";
+  const idBig = BigInt(id);
+  for (let i = 0; i < DOCTYPES.length; i++) {
+    const valid = await core.hasValidDocument(idBig, i);
+    // the anchor may live in a registry that was active when it was written
+    const reg = registryAt(await core.documentRegistryOf(idBig, i));
+    const rec = await reg.getDocument(idBig, i);
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      `<td>${DOCTYPES[i]}${(mask >> i) & 1 ? '<span class="pill">★ required</span>' : ""}</td>` +
+      `<td>${DOC_ROLE[i]}</td>` +
+      `<td style="color:${valid ? "var(--ok)" : "var(--bad)"}">${valid ? "valid" : (rec.cid ? "revoked" : "missing")}</td>` +
+      `<td>${rec.issuer && rec.issuer !== ethers.ZeroAddress ? short(rec.issuer) : "—"}</td>` +
+      `<td class="mono">${rec.cid ? rec.cid.slice(0, 14) + "…" : "—"}</td>`;
+    tb.appendChild(tr);
+    if (i >= 2) {
+      const o = document.createElement("option");
+      o.value = i; o.textContent = `${DOCTYPES[i]} (by ${DOC_ROLE[i]})`;
+      sel.appendChild(o);
+    }
+  }
+  const compliant = await core.isCompliant(BigInt(id), phase);
+  const row = document.createElement("tr");
+  row.innerHTML = `<td colspan="5" style="color:${compliant ? "var(--ok)" : "var(--warn)"}">
+    compliance at ${PHASES[phase]}: ${compliant ? "all required documents valid" : "not compliant yet"}</td>`;
+  tb.appendChild(row);
+}
+
+/** The full application flow, ticked off against on-chain state. */
+async function renderGuide(s, lc) {
+  const term = Number(s.term), id = s.id, phase = Number(s.phase);
+  const docs = {};
+  for (let i = 0; i < DOCTYPES.length; i++) docs[i] = await core.hasValidDocument(id, i);
+  const steps = [
+    { who: "Importer", what: "createOrder(exporter, " + INCOTERMS[term] + ", amount, deadline)", done: true },
+    { who: "Exporter", what: "createShipment(orderId, invoiceCID, packingListCID) → title NFT minted to the core",
+      done: true },
+    { who: "Importer", what: "openLetterOfCredit(id) → TradeUSD escrowed", done: lc.funded },
+  ];
+  if (term !== 0) steps.push({ who: "Verifier", what: "anchorDocument(id, InspectionCertificate)", done: docs[3] });
+  if (term === 2) steps.push({ who: "Verifier", what: "anchorDocument(id, InsuranceCertificate)", done: docs[4] });
+  if (term === 3) steps.push({ who: "Exporter", what: "anchorDocument(id, CertificateOfOrigin)", done: docs[2] });
+  steps.push({ who: "Logistics", what: "confirmPickup(id)" + (term === 0 ? " → EXW payout + risk transfer" : ""),
+    done: phase >= 2 && phase !== 6 });
+  steps.push({ who: "Logistics", what: "confirmVesselLoading(id, blCid) → B/L anchored, URI set" +
+    (term === 1 || term === 2 ? " → payout + risk transfer" : ""), done: phase >= 3 && phase !== 6 });
+  if (term === 3) {
+    steps.push({ who: "Verifier", what: "anchorDocument(id, CustomsClearance)", done: docs[6] });
+    steps.push({ who: "Exporter", what: "payCustomsDuty(id, amount) — before the payout", done: lc.dutyPaid });
+  }
+  steps.push({ who: term === 3 ? "Importer / Bank" : "Importer", what: "confirmFinalDelivery(id) → title to importer" +
+    (term === 3 ? " → DDP payout" : "") + " → Settled", done: phase >= 5 });
+  steps.push({ who: "Importer / Bank / Admin", what: "reclaimExpiredLC(id) — only if it never shipped before the deadline",
+    done: phase === 6 });
+  steps.push({ who: "Bank", what: "forceFinalizeDelivery(id) — only if the importer withholds after loading",
+    done: false, optional: true });
+
+  const nextIdx = steps.findIndex((st) => !st.done && !st.optional);
+  $("guide").innerHTML = steps.map((st, i) => {
+    const cls = st.done ? "done" : i === nextIdx ? "next" : "";
+    return `<li class="${cls}"><span class="who">${st.who}</span> — ${st.what}${st.optional ? ' <span class="pill">optional</span>' : ""}</li>`;
+  }).join("");
+}
+
+async function renderRegistry() {
+  try {
+    const active = await core.documentRegistry();
+    const bound = await registryAt(active).core();
+    const out = kv([
+      ["active registry", short(active)],
+      ["bound to core", String(bound.toLowerCase() === (await core.getAddress()).toLowerCase())],
+      ["compliance", short(await core.complianceEngine())],
+      ["escrow balance", fmt(await loc.escrowBalance()) + " tUSD"],
+      ["shipments", (await core.shipmentCount()).toString()],
+    ]);
+    $("regView").innerHTML = out;
+  } catch {}
+}
+
+/* ------------------------------------------------------------- ipfs helpers */
+async function ipfsAdd(file) {
+  const base = $("ipfsNode").value.replace(/\/$/, "");
+  const form = new FormData(); form.append("file", file);
+  const res = await fetch(`${base}/api/v0/add?cid-version=1&quieter=true`, { method: "POST", body: form });
+  if (!res.ok) throw new Error(`kubo add failed (${res.status})`);
+  return (await res.json()).Hash;
+}
+async function ipfsCat(cid) {
+  const base = $("ipfsNode").value.replace(/\/$/, "");
+  const res = await fetch(`${base}/api/v0/cat?arg=${encodeURIComponent(cid)}`, { method: "POST" });
+  if (!res.ok) throw new Error(`kubo cat failed (${res.status})`);
+  return res.blob();
+}
+
+/* ------------------------------------------------------------------ sender */
+/** Transactions are queued: two clicks in quick succession must not race on the nonce. */
+let txChain = Promise.resolve();
+function send(label, fn) {
+  const run = async () => {
+    if (!signer) { log(`${label} ✘ connect a wallet (or set a test key) to send transactions`); return null; }
+    try {
+      log(label + " …");
+      const tx = await fn();
+      const rc = await tx.wait();
+      await refresh();
+      if (label === "grantRoles") await refreshRoles();
+      // logged last, so the views are already up to date when the success line appears
+      log(`${label} ✔ tx ${rc.hash} (gas ${rc.gasUsed})`);
+      return rc;
+    } catch (e) {
+      const reason = e.info?.error?.message || e.shortMessage || e.reason || e.message;
+      log(`${label} ✘ ${reason}`);
+      return null;
+    }
+  };
+  const queued = txChain.then(run, run);
+  txChain = queued.catch(() => {});
+  return queued;
+}
+const need = () => { if (!core) { log("Load a core address first."); return false; } return true; };
+const shipId = () => BigInt($("shipId").value.trim() || "1");
+
+/* -------------------------------------------------------------------- wire */
+$("preset").onchange = () => {
+  if ($("preset").value === "sepolia") { $("core").value = SEPOLIA.core; $("rpc").value = SEPOLIA.rpc; }
+  else { $("core").value = ""; $("rpc").value = "http://127.0.0.1:8545"; }
+};
+$("preset").value = "sepolia"; $("core").value = SEPOLIA.core; $("rpc").value = SEPOLIA.rpc;
+
+$("btnConnect").onclick = connect;
+$("btnLoad").onclick = () => loadCore();
+$("btnRefresh").onclick = () => refresh();
+$("shipId").onchange = () => refresh();
+$("term").onchange = () => refresh();
+
+$("btnApprove").onclick = () => need() && send("approve TradeUSD", async () => {
+  const c = new ethers.Contract(await core.settlementToken(), TOKEN_ABI, signer);
+  return c.approve(await core.getAddress(), ethers.MaxUint256);
+});
+$("btnMint").onclick = () => need() && send("mint tUSD", () =>
+  core.mint($("mintTo").value.trim() || account, BigInt($("mintAmt").value) * UNIT));
+$("btnGrant").onclick = () => need() && send("grantRoles", () => {
+  const roles = [...$("roleBoxes").querySelectorAll("input:checked")].map((c) => roleIds[c.value]);
+  const to = $("grantee").value.trim() || account;
+  return core.grantRoles(roles, roles.map(() => to));
+});
+$("btnSwap").onclick = () => need() && send("setDocumentRegistry", () =>
+  core.setDocumentRegistry($("newRegistry").value.trim()));
+
+$("btnOrder").onclick = () => need() && send("createOrder", () =>
+  core.createOrder($("exporter").value.trim(), Number($("newTerm").value),
+    BigInt($("lcAmount").value) * UNIT,
+    BigInt(Math.floor(Date.now() / 1000) + Number($("days").value) * 86400))
+    .then(async (tx) => { await tx.wait(); $("shipOrderId").value = (await core.orderCount()).toString(); return tx; }));
+$("btnShipment").onclick = () => need() && send("createShipment", async () => {
+  const tx = await core.createShipment($("shipOrderId").value.trim(), $("invCid").value.trim(), $("packCid").value.trim());
+  await tx.wait(); $("shipId").value = (await core.shipmentCount()).toString(); return tx;
+});
+$("btnFund").onclick = () => need() && send("openLetterOfCredit", () => core.openLetterOfCredit(shipId()));
+$("btnAnchor").onclick = () => need() && send("anchorDocument", () =>
+  core.anchorDocument(shipId(), Number($("docType").value), $("docCid").value.trim()));
+$("btnRevoke").onclick = () => need() && send("revokeDocument", () =>
+  core.revokeDocument(shipId(), Number($("docType").value)));
+$("btnPickup").onclick = () => need() && send("confirmPickup", () => core.confirmPickup(shipId()));
+$("btnLoad2").onclick = () => need() && send("confirmVesselLoading", () =>
+  core.confirmVesselLoading(shipId(), $("blCid").value.trim()));
+$("btnDuty").onclick = () => need() && send("payCustomsDuty", () =>
+  core.payCustomsDuty(shipId(), BigInt($("duty").value || "0") * UNIT));
+$("btnDeliver").onclick = () => need() && send("confirmFinalDelivery", () => core.confirmFinalDelivery(shipId()));
+$("btnForce").onclick = () => need() && send("forceFinalizeDelivery", () => core.forceFinalizeDelivery(shipId()));
+$("btnReclaim").onclick = () => need() && send("reclaimExpiredLC", () => core.reclaimExpiredLC(shipId()));
+
+$("ipfsFile").onchange = async (e) => {
+  const f = e.target.files && e.target.files[0]; if (!f) return;
+  try { const cid = await ipfsAdd(f); $("docCid").value = cid; log(`ipfs add ✔ ${cid}`); }
+  catch (err) { log("ipfs add ✘ " + err.message); }
+};
+$("btnViewDoc").onclick = async () => {
+  const cid = $("docCid").value.trim(); if (!cid) return log("Enter a CID first.");
+  try { const blob = await ipfsCat(cid); window.open(URL.createObjectURL(blob), "_blank"); log(`ipfs cat ✔ ${cid}`); }
+  catch (err) { log("ipfs cat ✘ " + err.message); }
+};
+
+if (window.ethereum) window.ethereum.on?.("accountsChanged", () => connect());
+connect();
+</script>
+</body>
+</html>

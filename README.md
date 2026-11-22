@@ -66,11 +66,11 @@ forgery. TradeChain removes the trusted intermediary for the *verification and s
 
 | # | Component | Type | Responsibility |
 |---|-----------|------|----------------|
-| 1 | `TradeChainCore` | concrete (coordinator) | `AccessControl` role authority + single user entry point; deploys/wires the companions; orchestrates documents, milestones, settlement. |
+| 1 | `TradeChainCore` | concrete (coordinator) | `AccessControl` role authority + single user entry point; deploys/wires the companions; holds the modules' own access control; owns the swappable `DocumentRegistry`; orchestrates documents, milestones, settlement. |
 | 2 | `LetterOfCredit` | module | L/C state machine: funding, `TradeUSD` escrow, customs duty, atomic payout, expiry refund (reclaim). |
 | 3 | `ShipmentTracker` | module + ERC-721 | Orders + shipment records, lifecycle `Phase`, milestone timestamps, risk holder **and the e-B/L document-of-title token** (`tokenId == shipmentId`, milestone-gated transfer). |
-| 4 | `ComplianceEngine` | view module | Incoterm-aware required-document rules and validation. |
-| 5 | `DocumentRegistry` | module | Per-`(shipment, DocType)` CID anchors, verification status, anchor-once-then-lock. |
+| 4 | `ComplianceEngine` | view module | Incoterm-aware required-document rules and validation; resolves the registry that holds each anchor. |
+| 5 | `DocumentRegistry` | module | Per-`(shipment, DocType)` CID anchors, verification status, anchor-once-then-lock; **swappable** by the admin or `ROLE_REGISTRY_ADMIN`. |
 | 6 | `TradeUSD` | ERC-20 | Settlement stablecoin with **role-gated** minting. |
 
 `contracts/libraries/TradeTypes.sol` holds the shared enums/structs (inlined, not deployed).
@@ -79,17 +79,20 @@ forgery. TradeChain removes the trusted intermediary for the *verification and s
 
 ```
                     +----------------------- TradeChainCore (AccessControl) -----------------------+
-   roles grant ---> |  ROLE_EXPORTER · IMPORTER · BANK · LOGISTICS · VERIFIER   (+ DEFAULT_ADMIN)   |
-                    +------+---------------+---------------+---------------+-----------+-----------+
-                           | onlyCore      | onlyCore       | view          | onlyCore
+   roles grant ---> |  ROLE_EXPORTER · IMPORTER · BANK · LOGISTICS · VERIFIER · REGISTRY_ADMIN      |
+                    |                (+ DEFAULT_ADMIN · setModuleRole · setDocumentRegistry)        |
+                    +------+---------------+----------------+---------------+-----------+-----------+
+                           | CONTROLLER    | CONTROLLER     | view          | CONTROLLER
                            v               v                v               v
                      ShipmentTracker  DocumentRegistry  ComplianceEngine  LetterOfCredit
-                                                              | reads        | escrows
-                                                              +--------------+--> TradeUSD
+                      (+ ERC-721 title)   (swappable)        | reads        | escrows
+                                                             +--------------+--> TradeUSD
 ```
 
-Companion contracts accept state changes **only from the core** (`onlyCore`) and expose public
-views, so the DApp interacts with a single address while six contracts are deployed.
+Companion contracts accept state changes **only from the core** — their mutators are gated by a
+`CONTROLLER_ROLE` that only the core holds, and that role is administered by the core's own
+`AccessControl` (`setModuleRole`) — and they expose public views, so the DApp interacts with a single
+address while six contracts are deployed.
 `ShipmentTracker` is also the ERC-721 document of title (`tokenId == shipmentId`); `_update` rejects
 every externally initiated ERC-721 transfer, so the holder cannot move the title — only the core's
 `transferTitle` does, at the settlement milestone.
@@ -105,7 +108,13 @@ every externally initiated ERC-721 transfer, so the holder cannot move the title
 | `ROLE_BANK` | Issuing / advising bank |
 | `ROLE_LOGISTICS` | Carrier / freight forwarder |
 | `ROLE_VERIFIER` | Inspection body, insurer, customs (authorised address) |
+| `ROLE_REGISTRY_ADMIN` | The party allowed to replace the active `DocumentRegistry` |
 | `DEFAULT_ADMIN_ROLE` | Administrator / deployer |
+
+Each companion module also carries its own `AccessControl` **mounted on the core**: the core is
+granted `DEFAULT_ADMIN_ROLE` and `CONTROLLER_ROLE` on `ShipmentTracker`, `DocumentRegistry`,
+`LetterOfCredit` and `TradeUSD` (and the admin role on the read-only `ComplianceEngine`), so the
+modules' writers are administered from this single authority via `TradeChainCore.setModuleRole`.
 
 ### 3.3 Document types & anchor authority
 
@@ -121,6 +130,19 @@ every externally initiated ERC-721 transfer, so the holder cannot move the title
 
 Anchors are **anchor-once-then-lock**; a CID can never be replaced. The issuer (or the admin) may
 **revoke** a document, which invalidates it at compliance time.
+
+### 3.3.1 Swappable `DocumentRegistry`
+
+The active registry is **not hard-wired**: `TradeChainCore.setDocumentRegistry(address)` replaces it,
+and only `DEFAULT_ADMIN_ROLE` or `ROLE_REGISTRY_ADMIN` may call it. Two guards keep the swap safe:
+
+- the replacement must be a `DocumentRegistry` **bound to this core** (`registry.core() == core`), and
+- its runtime code must **match the deployment-time registry** (`extcodehash` check), so a look-alike
+  contract cannot forge `isValid` and fake compliance.
+
+The registry used for each anchor is **snapshotted** per `(shipment, DocType)`, so replacing the
+registry never orphans documents that are already anchored: `ComplianceEngine` resolves the registry
+that actually holds each anchor through the core, and in-flight shipments keep settling.
 
 ### 3.4 Shipment lifecycle (state machine)
 
@@ -189,11 +211,11 @@ Bank       forceFinalizeDelivery(id)                             → if the impo
 │   │   └── TradeUSD.sol                # ERC-20 stablecoin (role-gated mint)
 │   ├── libraries/TradeTypes.sol        # shared enums/structs
 │   └── mocks/MaliciousReentrancy.sol   # adversarial settlement token (tests only)
-├── test/                               # 87-test Hardhat suite
+├── test/                               # 97-test Hardhat suite
 │   ├── helpers/fixture.js
 │   ├── Order.test.js · DocumentRegistry.test.js · ComplianceEngine.test.js
 │   ├── Incoterms.e2e.test.js · Neutrality.test.js · AccessControl.test.js
-│   ├── Modules.test.js · Reentrancy.test.js · Tokens.test.js · Views.test.js
+│   ├── RegistrySwap.test.js · Modules.test.js · Reentrancy.test.js · Tokens.test.js · Views.test.js
 ├── scripts/
 │   ├── deploy.js                       # deploy + wire the six contracts + roles
 │   ├── seed-demo.js                    # drive a full EXW→FOB→CIF→DDP demo
@@ -202,6 +224,8 @@ Bank       forceFinalizeDelivery(id)                             → if the impo
 │   └── ipfs-pin.js                     # keep a counterparty's own copy of a CID
 ├── dapp/                               # React (Vite) + ethers v6 + MetaMask dashboard
 │   └── src/ipfs.js · src/App.jsx       # upload + document-viewer (retrieve by CID from a node)
+├── ui/                                 # single-file HTML/JS console (no build step)
+│   └── index.html                      # lifecycle stepper, flow guide, all workflow/admin actions
 ├── docs/
 │   ├── ARCHITECTURE.md · DESIGN_DECISIONS.md · SECURITY.md
 │   ├── IPFS_CONSORTIUM.md              # per-role nodes, upload/retrieve flow
@@ -241,8 +265,8 @@ Bank       forceFinalizeDelivery(id)                             → if the impo
 ```bash
 npm install
 npx hardhat compile
-npx hardhat test                     # 87 passing
-npx hardhat coverage                 # 100 % stmts · 93.08 % branch · 100 % funcs · 100 % lines
+npx hardhat test                     # 97 passing
+npx hardhat coverage                 # 100 % stmts · 93.88 % branch · 100 % funcs · 100 % lines
 npm run gas                          # optional gas report
 ```
 
@@ -277,6 +301,25 @@ cd dapp && npm install && npm run dev                         # terminal 2 → h
 Paste the core address, choose a role account, and walk the numbered panels. See
 [`dapp/README.md`](./dapp/README.md).
 
+### Plain HTML console (`ui/`) — no build step
+
+A single-file dashboard that walks the **whole application flow**: lifecycle stepper, a per-Incoterm
+flow guide ticked off against on-chain state, document table with validity/issuer/CID, L/C and
+title-NFT viewers, and every workflow/admin action (including `setDocumentRegistry` and
+`setModuleRole`).
+
+```bash
+npx hardhat node                                        # terminal 1 (optional, local demo)
+npx hardhat run scripts/deploy.js --network localhost
+python -m http.server 8090                              # terminal 2  (or: npx serve)
+# open http://127.0.0.1:8090/ui/index.html
+```
+
+- Opens pre-set to the verified Sepolia deployment and works **read-only** without a wallet;
+  connect MetaMask (or paste a test-only key for a local node) to send transactions.
+- `ethers` is vendored locally (`ui/ethers.umd.min.js`), so it also works offline.
+- Transactions are queued, so clicking two actions in quick succession cannot race on the nonce.
+
 ### Off-chain documents (per-role IPFS)
 
 Each role runs its own kubo node and keeps its own copy; the DApp's **IPFS node** field targets the
@@ -295,24 +338,28 @@ upload/retrieve flow.
 
 ## 7. Sepolia Deployment (verified)
 
-Deployed and verified on **Ethereum Sepolia** (chainId 11155111); record in
-[`deployments/sepolia.json`](./deployments/sepolia.json). Every contract's source is published on
-Etherscan (append `#code` to each address).
+Deployed and **source-verified** on **Ethereum Sepolia** (chainId 11155111) on 22 November 2026 — all
+six contracts; record in [`deployments/sepolia.json`](./deployments/sepolia.json). Every contract's
+source is published on Etherscan (append `#code` to each address).
 
 | Contract | Address |
 |----------|---------|
-| `TradeChainCore` | [`0x2975F0E166A15e13dFb64efD6d55578DEef861Be`](https://sepolia.etherscan.io/address/0x2975F0E166A15e13dFb64efD6d55578DEef861Be#code) |
-| `ShipmentTracker` (e-B/L ERC-721) | [`0x9f85F3dca79BEEC07Fb50350637d1AA181BBF926`](https://sepolia.etherscan.io/address/0x9f85F3dca79BEEC07Fb50350637d1AA181BBF926#code) |
-| `DocumentRegistry` | [`0xFf79f12350DD6061A36d7268f5Ccb51764caA301`](https://sepolia.etherscan.io/address/0xFf79f12350DD6061A36d7268f5Ccb51764caA301#code) |
-| `ComplianceEngine` | [`0xC62187D99Fd6115eE8010d263230e305907b4ca5`](https://sepolia.etherscan.io/address/0xC62187D99Fd6115eE8010d263230e305907b4ca5#code) |
-| `LetterOfCredit` | [`0x980A395218D6349a501508e4264b8b868c6F42AA`](https://sepolia.etherscan.io/address/0x980A395218D6349a501508e4264b8b868c6F42AA#code) |
-| `TradeUSD` (ERC-20) | [`0x1a2372BAEfb7bF6F50cafE08cc62EB32BB327ac4`](https://sepolia.etherscan.io/address/0x1a2372BAEfb7bF6F50cafE08cc62EB32BB327ac4#code) |
+| `TradeChainCore` | [`0x0372C1F622c6b46919a70a89EF85306565Eb98C5`](https://sepolia.etherscan.io/address/0x0372C1F622c6b46919a70a89EF85306565Eb98C5#code) |
+| `ShipmentTracker` (e-B/L ERC-721) | [`0x41edc2FF37b7ce6Da9aD27d1aabDa703e2989539`](https://sepolia.etherscan.io/address/0x41edc2FF37b7ce6Da9aD27d1aabDa703e2989539#code) |
+| `DocumentRegistry` (swappable) | [`0x9eCE26443f9647D1Cb715aB7971B5554a964695e`](https://sepolia.etherscan.io/address/0x9eCE26443f9647D1Cb715aB7971B5554a964695e#code) |
+| `ComplianceEngine` | [`0x259684bb5c5b9198FffA4502248611C356844761`](https://sepolia.etherscan.io/address/0x259684bb5c5b9198FffA4502248611C356844761#code) |
+| `LetterOfCredit` | [`0xdC6Ee51c61226CC0E42C76921e94C011196A0650`](https://sepolia.etherscan.io/address/0xdC6Ee51c61226CC0E42C76921e94C011196A0650#code) |
+| `TradeUSD` (ERC-20) | [`0x2C262BE7C837E0236FC0346Ad70d6e86ECCb445d`](https://sepolia.etherscan.io/address/0x2C262BE7C837E0236FC0346Ad70d6e86ECCb445d#code) |
 
 Deployer: `0xCE4b0826b1B5d4bEA67EED5212Ae0AA5ec6c8664`.
 
-Creation transactions: `TradeUSD` `0xae37de9a9ffd296210c9b6105631d1087594519d693cdbeb573a2aefb0bb0ae4`
-(block 12070799) and `TradeChainCore` `0xbd8908fb8c9a10917bee57476fef25299b353ddda225d86f30fb69f3e43738c8`
-(block 12070801) — the core's transaction also created the four companion contracts in its constructor.
+Creation transactions: `TradeUSD` `0x513ec4fc6d3cae33aa88b022dc31f087937c92cef53f62b3849c6b1209fc4509`
+(block 12186124) and `TradeChainCore` `0x034ee59f424030c31e8d38f4c4ed41b94b9979f351b169fb2dfa62581851d4d3`
+(block 12186125) — the core's transaction also created the four companion contracts in its constructor.
+
+> This deployment supersedes the 5 November 2026 suite
+> ([archived record](./deployments/sepolia-2026-11-05.json)); the earlier contracts implement the
+> pre-swap registry design and are kept only as historical evidence.
 
 ## 8. Step-by-step Verification Walkthrough
 
@@ -328,9 +375,9 @@ npx hardhat coverage
 npx solhint "contracts/**/*.sol"
 ```
 
-- [ ] `compile` → `Compiled 37 Solidity files successfully`
-- [ ] `test` → `87 passing`
-- [ ] `coverage` → **100 % statements · 93.08 % branch · 100 % functions · 100 % lines** (mocks excluded)
+- [ ] `compile` → `Compiled 39 Solidity files successfully`
+- [ ] `test` → `97 passing`
+- [ ] `coverage` → **100 % statements · 93.88 % branch · 100 % functions · 100 % lines** (mocks excluded)
 - [ ] `solhint` → no errors
 
 ### B. Local end-to-end demo (all four Incoterms)
@@ -346,10 +393,12 @@ npx hardhat run scripts/seed-demo.js --network localhost
 - [ ] For each flow the final line is `title NFT owner: 0x…` = the importer's address
 - [ ] `EXW` settles at `PickedUp`, `FOB`/`CIF` at `LoadedOnVessel`, `DDP` at `Delivered`
 
-### C. React DApp
+### C. React DApp / HTML console
 
 ```bash
 cd dapp && npm install && npm run dev     # http://localhost:5173
+# or, without a build step:
+python -m http.server 8090                # → http://127.0.0.1:8090/ui/index.html
 ```
 
 - [ ] Paste the local `TradeChainCore` address → **Connect / Load**
@@ -357,6 +406,7 @@ cd dapp && npm install && npm run dev     # http://localhost:5173
 - [ ] Panel 2 → `openLetterOfCredit`, anchor certificates, upload a file (CID fills in)
 - [ ] Panel 3 → milestones; **Shipment viewer** shows phase + document flags
 - [ ] **Document viewer** → open an anchored CID from the node that holds it
+- [ ] `ui/index.html` → the lifecycle stepper advances and the flow guide ticks each step off
 
 ### D. Off-chain documents (per-role IPFS)
 
@@ -399,6 +449,8 @@ npx hardhat run scripts/verify.js --network sepolia
 | **Revoked attestation** | Verifier revokes a relied-upon certificate | `DocumentRegistry.revoke` clears `verified`; checked at compliance time | `DocumentRegistry` revocation tests |
 | **Unauthorized milestone** | Wrong role advances the shipment / mints tokens | `onlyRole` + per-shipment importer/exporter checks | `AccessControl.test.js` |
 | **Stablecoin inflation** | Anyone mints `TradeUSD` | `mint` is `MINTER_ROLE`-gated (core/admin only) | `Tokens.test.js` |
+| **Forged compliance via a swapped registry** | A look-alike "registry" that answers `isValid == true` is swapped in, releasing the escrow with no documents | `setDocumentRegistry` requires a registry bound to this core *and* matching the deployment-time runtime codehash; only the admin or `ROLE_REGISTRY_ADMIN` may swap | `RegistrySwap.test.js` (`RegistryInvalidCode`) |
+| **Orphaned documents after a registry swap** | Replacing the registry would hide previously anchored documents and stall in-flight shipments | The core snapshots the registry per `(shipment, DocType)`; `ComplianceEngine` resolves the registry that holds each anchor | `RegistrySwap.test.js` ("routes new anchors … while old anchors keep resolving") |
 
 ## 10. Testing & Coverage
 
@@ -411,7 +463,7 @@ npx hardhat run scripts/verify.js --network sepolia
 | Modules | Internal guards reached directly (funding/duty/settlement ordering, reclaim window) | `Modules.test.js` |
 | Security | Adversarial settlement token; Slither + coverage in CI | Single payout; no High findings |
 
-Current result: **87 tests passing · 100 % statements · 93.08 % branches · 100 % functions ·
+Current result: **97 tests passing · 100 % statements · 93.88 % branches · 100 % functions ·
 100 % lines** (mocks excluded via `.solcover.js`).
 
 ## 11. CI / Static Analysis
@@ -424,9 +476,9 @@ security criteria and its report is retained as a build artifact.
 
 | Phase | Activities | Deliverable | Status |
 |-------|------------|-------------|--------|
-| **Phase 1** | Develop the six contracts + tests | Compiling, tested suite | ✅ done |
-| **Phase 2** | Security review, adversarial tests, coverage | ≥ 90 % branch coverage, Slither report | ✅ done (100 % stmts / 93.08 % branch) |
-| **Phase 3** | Sepolia deploy + verify, React DApp, demo video, report | Verified contracts, DApp, report | 🟡 **deploy + verify done**; video/report pending |
+| **Phase 1** | Develop the six contracts + tests | Compiling, tested suite | ✅ done (97 tests) |
+| **Phase 2** | Security review, adversarial tests, coverage | ≥ 90 % branch coverage, Slither report | ✅ done (100 % stmts / 93.88 % branch) |
+| **Phase 3** | Sepolia deploy + verify, DApp + flow console, demo video, report | Verified contracts, DApp, report | 🟡 **deploy + verify done · report drafted** (`CSIT5760_Final_Project_Report_21232072.docx`) · video pending |
 
 Progress log: see `git log --oneline` and [`CHANGES.md`](./CHANGES.md).
 

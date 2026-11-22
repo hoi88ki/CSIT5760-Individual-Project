@@ -20,6 +20,11 @@ export const CORE_ABI = [
   "function reclaimExpiredLC(uint256 id)",
   "function forceFinalizeDelivery(uint256 id)",
   "function revokeDocument(uint256 id, uint8 docType)",
+  // registry / module administration (admin or ROLE_REGISTRY_ADMIN)
+  "function setDocumentRegistry(address newRegistry)",
+  "function setModuleRole(address module, bytes32 role, address account, bool granted)",
+  "function documentRegistryOf(uint256 id, uint8 docType) view returns (address)",
+  "function ROLE_REGISTRY_ADMIN() view returns (bytes32)",
   // views
   "function settlementToken() view returns (address)",
   "function shipmentTracker() view returns (address)",

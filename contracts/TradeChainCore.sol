@@ -16,8 +16,14 @@ import {LetterOfCredit} from "./core/LetterOfCredit.sol";
 /// @notice Owns the `AccessControl` role authority, deploys/wires the four companion contracts,
 ///         receives the `TradeUSD` settlement token and orchestrates the full trade workflow
 ///         (orders, documents, milestones, settlement).
-/// @dev    Companion contracts accept calls only from this core (`onlyCore`) and expose public
-///         views, so the DApp interacts with one address while six contracts are deployed.
+/// @dev    The access control of the companion modules (`DocumentRegistry`, `LetterOfCredit`,
+///         `ComplianceEngine`) is mounted here: each module grants its `DEFAULT_ADMIN_ROLE` and
+///         `CONTROLLER_ROLE` to this core at construction, so the modules' writers and their role
+///         administration are managed from this single authority (`setModuleRole`). The active
+///         `DocumentRegistry` is swappable by the admin or `ROLE_REGISTRY_ADMIN`
+///         (`setDocumentRegistry`), and the registry used for each anchor is snapshotted so a
+///         swap never orphans documents that are already anchored. The DApp interacts with one
+///         address while six contracts are deployed.
 contract TradeChainCore is AccessControl, IERC721Receiver {
     using SafeERC20 for IERC20;
 
@@ -30,6 +36,8 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
     bytes32 public constant ROLE_BANK = keccak256("ROLE_BANK");
     bytes32 public constant ROLE_LOGISTICS = keccak256("ROLE_LOGISTICS");
     bytes32 public constant ROLE_VERIFIER = keccak256("ROLE_VERIFIER");
+    /// @notice Role allowed to replace the active `DocumentRegistry` ("the corresponding role").
+    bytes32 public constant ROLE_REGISTRY_ADMIN = keccak256("ROLE_REGISTRY_ADMIN");
 
     // ---------------------------------------------------------------------
     // Companion contracts + settlement token
@@ -37,9 +45,20 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
 
     IERC20 public immutable settlementToken;
     ShipmentTracker public immutable shipmentTracker;
-    DocumentRegistry public immutable documentRegistry;
+    /// @notice Active document registry. Swappable by the admin or `ROLE_REGISTRY_ADMIN`
+    ///         (see `setDocumentRegistry`); the registry used for each anchor is snapshotted.
+    DocumentRegistry public documentRegistry;
     ComplianceEngine public immutable complianceEngine;
     LetterOfCredit public immutable letterOfCredit;
+
+    /// @notice Registry that holds each `(shipment, DocType)` anchor, snapshotted at anchor time so
+    ///         that replacing the active registry never orphans documents of in-flight shipments.
+    mapping(uint256 id => mapping(TradeTypes.DocType docType => address registry)) private _docRegistryOf;
+
+    /// @notice Runtime codehash of the deployment-time registry. A replacement registry must match
+    ///         it, so only a genuine `DocumentRegistry` (whose only writer is this core) can be
+    ///         swapped in and a look-alike contract cannot forge `isValid` for compliance.
+    bytes32 private _registryCodehash;
 
     // ---------------------------------------------------------------------
     // Errors
@@ -55,6 +74,11 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
     error ArrayLengthMismatch();
     error NotTokenAdmin();
     error LCAlreadySettled(uint256 id);
+    error RegistryAlreadyActive(address registry);
+    error RegistryNotBoundToCore(address registry);
+    error RegistryInvalidCode(address registry);
+    error UnknownModule(address module);
+    error CannotRevokeCoreAdmin(address module);
 
     // ---------------------------------------------------------------------
     // Events
@@ -90,6 +114,8 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
     event LCReclaimed(uint256 indexed id, address indexed importer, uint256 lcRefund, uint256 dutyRefund);
     event DeliveryForceFinalized(uint256 indexed id, address indexed bank);
     event TreasuryUpdated(address indexed treasury);
+    event DocumentRegistryReplaced(address indexed oldRegistry, address indexed newRegistry);
+    event ModuleRoleSet(address indexed module, bytes32 indexed role, address indexed account, bool granted);
 
     /// @param token_ The ERC-20 settlement token (e.g. `TradeUSD`). Must be non-zero.
     constructor(IERC20 token_) {
@@ -99,7 +125,7 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
 
         ShipmentTracker tracker = new ShipmentTracker(address(this));
         DocumentRegistry registry = new DocumentRegistry(address(this));
-        ComplianceEngine compliance = new ComplianceEngine(address(registry), address(tracker));
+        ComplianceEngine compliance = new ComplianceEngine(address(this), address(registry), address(tracker));
         LetterOfCredit loc = new LetterOfCredit(
             address(this),
             address(token),
@@ -112,6 +138,7 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
         documentRegistry = registry;
         complianceEngine = compliance;
         letterOfCredit = loc;
+        _registryCodehash = address(registry).codehash;
 
         // OpenZeppelin v5 AccessControl does not auto-grant DEFAULT_ADMIN_ROLE.
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
@@ -140,6 +167,53 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
         if (!ok) revert NotTokenAdmin();
     }
 
+    /// @notice Replaces the active `DocumentRegistry`. Only the admin or `ROLE_REGISTRY_ADMIN`.
+    /// @dev    The replacement must be bound to this core and its runtime code must match the
+    ///         deployment-time registry, so only a genuine `DocumentRegistry` (whose only writer
+    ///         is this core) can be swapped in and `isValid` cannot be forged for compliance.
+    ///         Documents already anchored stay in their registry: the core snapshots the registry
+    ///         per `(shipment, DocType)`, so in-flight shipments keep resolving correctly.
+    function setDocumentRegistry(address newRegistry) external {
+        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender) && !hasRole(ROLE_REGISTRY_ADMIN, msg.sender)) {
+            revert Unauthorized(msg.sender);
+        }
+        if (newRegistry == address(0)) revert ZeroAddress();
+        if (newRegistry == address(documentRegistry)) revert RegistryAlreadyActive(newRegistry);
+        if (DocumentRegistry(newRegistry).core() != address(this)) revert RegistryNotBoundToCore(newRegistry);
+        if (newRegistry.codehash != _registryCodehash) revert RegistryInvalidCode(newRegistry);
+
+        emit DocumentRegistryReplaced(address(documentRegistry), newRegistry);
+        documentRegistry = DocumentRegistry(newRegistry);
+    }
+
+    /// @notice Grants or revokes a role on a companion module. The modules' `AccessControl` is
+    ///         mounted on this core, so this is the single place their writers are administered.
+    /// @dev    `module` must be one of the core's own companions; the core holds each module's
+    ///         `DEFAULT_ADMIN_ROLE`. Revoking the core's own admin is rejected so the modules can
+    ///         never become unmanaged.
+    function setModuleRole(
+        address module,
+        bytes32 role,
+        address account,
+        bool granted
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (
+            module != address(documentRegistry) &&
+            module != address(letterOfCredit) &&
+            module != address(complianceEngine)
+        ) revert UnknownModule(module);
+        if (!granted && role == DEFAULT_ADMIN_ROLE && account == address(this)) {
+            revert CannotRevokeCoreAdmin(module);
+        }
+
+        if (granted) {
+            AccessControl(module).grantRole(role, account);
+        } else {
+            AccessControl(module).revokeRole(role, account);
+        }
+        emit ModuleRoleSet(module, role, account, granted);
+    }
+
     // ---------------------------------------------------------------------
     // Order -> Shipment -> L/C
     // ---------------------------------------------------------------------
@@ -162,8 +236,8 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
         string calldata packingListCID
     ) external onlyRole(ROLE_EXPORTER) returns (uint256 id) {
         id = shipmentTracker.fulfilOrder(orderId, msg.sender);
-        documentRegistry.anchor(id, TradeTypes.DocType.CommercialInvoice, invoiceCID, msg.sender);
-        documentRegistry.anchor(id, TradeTypes.DocType.PackingList, packingListCID, msg.sender);
+        _anchor(id, TradeTypes.DocType.CommercialInvoice, invoiceCID, msg.sender);
+        _anchor(id, TradeTypes.DocType.PackingList, packingListCID, msg.sender);
         shipmentTracker.mint(address(this), id, "");
 
         TradeTypes.Shipment memory s = shipmentTracker.getShipment(id);
@@ -191,7 +265,7 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
         if (uint8(s.phase) < uint8(TradeTypes.Phase.LCFunded) || s.phase == TradeTypes.Phase.Reclaimed) {
             revert InvalidStateRange(id, s.phase);
         }
-        documentRegistry.anchor(id, docType, cid, msg.sender);
+        _anchor(id, docType, cid, msg.sender);
     }
 
     // ---------------------------------------------------------------------
@@ -222,7 +296,7 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
         TradeTypes.Shipment memory s = _requireActive(id);
         if (s.phase != TradeTypes.Phase.PickedUp) revert InvalidState(id, TradeTypes.Phase.PickedUp, s.phase);
 
-        documentRegistry.anchor(id, TradeTypes.DocType.BillOfLadingOrAWB, blCid, msg.sender);
+        _anchor(id, TradeTypes.DocType.BillOfLadingOrAWB, blCid, msg.sender);
         shipmentTracker.setTokenURI(id, string.concat("ipfs://", blCid));
         complianceEngine.requireCompliant(id, s.term, TradeTypes.Phase.LoadedOnVessel);
 
@@ -289,10 +363,11 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
 
     /// @notice Revokes a document: the original issuer or the admin.
     function revokeDocument(uint256 id, TradeTypes.DocType docType) external {
+        DocumentRegistry reg = DocumentRegistry(documentRegistryOf(id, docType));
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
-            if (msg.sender != documentRegistry.issuerOf(id, docType)) revert Unauthorized(msg.sender);
+            if (msg.sender != reg.issuerOf(id, docType)) revert Unauthorized(msg.sender);
         }
-        documentRegistry.revoke(id, docType);
+        reg.revoke(id, docType);
     }
 
     // ---------------------------------------------------------------------
@@ -307,6 +382,14 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
             docType == TradeTypes.DocType.CustomsClearance
         ) return ROLE_VERIFIER;
         revert DocumentNotAnchorable(docType);
+    }
+
+    /// @dev Anchors `docType` into the currently active registry and snapshots the pairing, so
+    ///      replacing the registry later cannot hide or move an already-anchored document.
+    function _anchor(uint256 id, TradeTypes.DocType docType, string calldata cid, address issuer) internal {
+        DocumentRegistry reg = documentRegistry;
+        reg.anchor(id, docType, cid, issuer);
+        _docRegistryOf[id][docType] = address(reg);
     }
 
     function _triggerSettlement(uint256 id) internal {
@@ -367,8 +450,15 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
         return shipmentTracker.getShipment(id);
     }
 
+    /// @notice Registry that holds the `(id, docType)` anchor: the snapshot taken at anchor time,
+    ///         or the currently active registry when that anchor has not been written yet.
+    function documentRegistryOf(uint256 id, TradeTypes.DocType docType) public view returns (address) {
+        address resolved = _docRegistryOf[id][docType];
+        return resolved == address(0) ? address(documentRegistry) : resolved;
+    }
+
     function getDocument(uint256 id, TradeTypes.DocType docType) external view returns (TradeTypes.DocRecord memory) {
-        return documentRegistry.getDocument(id, docType);
+        return DocumentRegistry(documentRegistryOf(id, docType)).getDocument(id, docType);
     }
 
     function getLC(uint256 id) external view returns (LetterOfCredit.LC memory) {
@@ -384,7 +474,7 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
     }
 
     function hasValidDocument(uint256 id, TradeTypes.DocType docType) external view returns (bool) {
-        return documentRegistry.isValid(id, docType);
+        return DocumentRegistry(documentRegistryOf(id, docType)).isValid(id, docType);
     }
 
     function payoutPhaseOf(TradeTypes.Incoterm term) external pure returns (TradeTypes.Phase) {

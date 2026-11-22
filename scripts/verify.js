@@ -30,7 +30,7 @@ async function main() {
     {
       name: "ComplianceEngine",
       address: dep.complianceEngine,
-      constructorArguments: [dep.documentRegistry, dep.shipmentTracker],
+      constructorArguments: [dep.core, dep.documentRegistry, dep.shipmentTracker],
     },
     {
       name: "LetterOfCredit",

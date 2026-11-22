@@ -2,26 +2,26 @@
   "network": "sepolia",
   "chainId": 11155111,
   "deployer": "0xCE4b0826b1B5d4bEA67EED5212Ae0AA5ec6c8664",
-  "settlementToken": "0x1a2372BAEfb7bF6F50cafE08cc62EB32BB327ac4",
+  "settlementToken": "0x2C262BE7C837E0236FC0346Ad70d6e86ECCb445d",
   "tokenMeta": {
     "name": "TradeChain USD",
     "symbol": "tUSD",
     "decimals": 6,
     "admin": "0xCE4b0826b1B5d4bEA67EED5212Ae0AA5ec6c8664"
   },
-  "core": "0x2975F0E166A15e13dFb64efD6d55578DEef861Be",
-  "shipmentTracker": "0x9f85F3dca79BEEC07Fb50350637d1AA181BBF926",
-  "documentRegistry": "0xFf79f12350DD6061A36d7268f5Ccb51764caA301",
-  "complianceEngine": "0xC62187D99Fd6115eE8010d263230e305907b4ca5",
-  "letterOfCredit": "0x980A395218D6349a501508e4264b8b868c6F42AA",
+  "core": "0x0372C1F622c6b46919a70a89EF85306565Eb98C5",
+  "shipmentTracker": "0x41edc2FF37b7ce6Da9aD27d1aabDa703e2989539",
+  "documentRegistry": "0x9eCE26443f9647D1Cb715aB7971B5554a964695e",
+  "complianceEngine": "0x259684bb5c5b9198FffA4502248611C356844761",
+  "letterOfCredit": "0xdC6Ee51c61226CC0E42C76921e94C011196A0650",
   "creationTransactions": {
     "tradeUSD": {
-      "txHash": "0xae37de9a9ffd296210c9b6105631d1087594519d693cdbeb573a2aefb0bb0ae4",
-      "block": 12070799
+      "txHash": "0x513ec4fc6d3cae33aa88b022dc31f087937c92cef53f62b3849c6b1209fc4509",
+      "block": 12186124
     },
     "tradeChainCore": {
-      "txHash": "0xbd8908fb8c9a10917bee57476fef25299b353ddda225d86f30fb69f3e43738c8",
-      "block": 12070801,
+      "txHash": "0x034ee59f424030c31e8d38f4c4ed41b94b9979f351b169fb2dfa62581851d4d3",
+      "block": 12186125,
       "note": "Deploying TradeChainCore also created ShipmentTracker, DocumentRegistry, ComplianceEngine and LetterOfCredit in its constructor (same transaction)."
     }
   },
@@ -32,5 +32,11 @@
     "ROLE_LOGISTICS": "0xCE4b0826b1B5d4bEA67EED5212Ae0AA5ec6c8664",
     "ROLE_VERIFIER": "0xCE4b0826b1B5d4bEA67EED5212Ae0AA5ec6c8664"
   },
-  "deployedAt": "2026-11-05T16:56:27.560Z"
+  "deployedAt": "2026-11-22T03:23:13.604Z",
+  "supersedes": "deployments/sepolia-2026-11-05.json",
+  "changes": [
+    "DocumentRegistry is swappable (setDocumentRegistry, guarded by binding + runtime codehash; ROLE_REGISTRY_ADMIN)",
+    "Companion module access control mounted on TradeChainCore (setModuleRole)",
+    "ComplianceEngine resolves the registry that holds each (shipment, DocType) anchor"
+  ]
 }

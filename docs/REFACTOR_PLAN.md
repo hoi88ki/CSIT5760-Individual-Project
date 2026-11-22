@@ -44,7 +44,7 @@ deployed).
 ## Phases — status
 
 1. ✅ Contracts restructured; compiles clean (6 deployed + 1 library).
-2. ✅ Hardhat suite (87 tests) → 100 % statements / **93.08 % branches** / 100 % functions / 100 % lines.
+2. ✅ Hardhat suite (97 tests) → 100 % statements / **93.88 % branches** / 100 % functions / 100 % lines.
 3. ✅ `scripts/` updated (`deploy`, `seed-demo`, `verify`, `ipfs-add`/`ipfs-pin` for per-role nodes).
 4. ✅ React (Vite) + ethers v6 + MetaMask DApp in `dapp/` (builds via `npm run build`).
 5. ✅ `README.md`, `docs/*`, `docs/PROPOSAL_UPDATES.md`, CI and `.gitignore` updated.

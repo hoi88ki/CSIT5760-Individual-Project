@@ -26,10 +26,16 @@ module.exports = {
   networks: {
     hardhat: {
       chainId: 31337,
+      // Pin the pre-Osaka hardfork for the local network: from Osaka, EIP-7825 caps a single
+      // transaction at 2^24 gas, which the instrumented core deployment exceeds under coverage.
+      hardfork: "cancun",
       // Deterministic accounts; a high gas limit keeps E2E flows cheap to script and lets the
       // core's constructor deploy the six companion contracts even under coverage instrumentation.
       blockGasLimit: 0x1fffffffffffff,
-      allowUnlimitedContractSize: false,
+      // The core's init code embeds its four companions (~42 kB, 85 % of the EIP-3860 limit).
+      // Coverage instrumentation roughly doubles it, so the *local* network must not enforce the
+      // init-code cap. Sepolia enforces it: the production build stays at ~42 kB (< 49,152).
+      allowUnlimitedContractSize: true,
     },
     localhost: {
       url: "http://127.0.0.1:8545",

@@ -5,6 +5,100 @@ Authoritative design rationale stays in [`docs/DESIGN_DECISIONS.md`](./docs/DESI
 
 ---
 
+## 2026-11-22 — `ui/` single-file flow console
+
+A no-build HTML/JS dashboard for demonstrating and inspecting the whole application flow
+([`ui/index.html`](./ui/index.html), ethers vendored as `ui/ethers.umd.min.js`):
+
+- **Lifecycle stepper** (Created → LCFunded → PickedUp → LoadedOnVessel → Delivered → Settled, with
+  Reclaimed as the alternative terminal) annotated with the Incoterm payout/risk milestone.
+- **Flow guide** that lists who does what, in order, for the selected Incoterm, and ticks each step
+  off against on-chain state (documents anchored, phase reached, duty paid, L/C funded).
+- **Viewers** for the order, the L/C (funded/paid/reclaimed/duty), the e-B/L title NFT
+  (owner/escrow/tokenURI) and the document table (validity, issuer, CID, ★ required set).
+- **Actions** for the full workflow plus the administration surface: `grantRoles`, `mint`,
+  `approve`, `setDocumentRegistry`, `setModuleRole`, and every milestone call.
+- Connects with MetaMask, falls back to a read-only RPC (works without a wallet), and accepts a
+  **test-only in-memory private key** for local-node demos. Transactions are queued so rapid clicks
+  cannot race on the nonce. Unknown shipment ids render a graceful "does not exist yet" state.
+
+Validated end to end against a local node (order → shipment → L/C → inspection → pickup → loading
+with payout → delivery → Settled, title transferred) and read-only against the Sepolia deployment.
+
+---
+
+## 2026-11-22 — Swappable DocumentRegistry + module access control mounted on the core
+
+Two architecture changes requested after the final review, plus the redeployment they require.
+
+### 1. Swappable `DocumentRegistry` (`TradeChainCore.setDocumentRegistry`)
+
+- `TradeChainCore.documentRegistry` is no longer `immutable`. The admin or a new
+  `ROLE_REGISTRY_ADMIN` may replace it with `setDocumentRegistry(address)`.
+- **Swap guards** (both required, otherwise the swap reverts):
+  - the replacement must be a `DocumentRegistry` **bound to this core** (`registry.core() == core`),
+  - its **runtime codehash must match** the deployment-time registry, so a look-alike contract
+    cannot be swapped in to forge `isValid` and release an escrow with no documents.
+- **Anchor snapshots.** Every anchor records which registry holds it
+  (`_docRegistryOf[id][docType]`), exposed as `documentRegistryOf(id, docType)`. `getDocument`,
+  `hasValidDocument` and `revokeDocument` resolve through it, and `ComplianceEngine` resolves the
+  registry per `(shipment, DocType)` through the core (`IDocumentDirectory`), falling back to the
+  deployment-time registry. A swap therefore never hides already-anchored documents and in-flight
+  shipments keep settling.
+- New view: `documentRegistryOf(id, docType)`; new errors: `RegistryAlreadyActive`,
+  `RegistryNotBoundToCore`, `RegistryInvalidCode`; new event: `DocumentRegistryReplaced`.
+
+### 2. Companion access control mounted on `TradeChainCore` (`setModuleRole`)
+
+- `DocumentRegistry`, `LetterOfCredit` and `ComplianceEngine` now inherit OpenZeppelin
+  `AccessControl` and grant `DEFAULT_ADMIN_ROLE` + `CONTROLLER_ROLE` to the core at construction
+  (`ComplianceEngine`, which has no mutators, grants the admin role only). Their `onlyCore`
+  msg.sender checks were replaced by `onlyRole(CONTROLLER_ROLE)`, so the modules' writers are
+  administered from the core's single `AccessControl`.
+- `TradeChainCore.setModuleRole(module, role, account, granted)` grants/revokes a module role; the
+  module must be one of the core's own companions, and revoking the core's own admin on a module is
+  rejected (`CannotRevokeCoreAdmin`) so the modules can never become unmanaged.
+- `ShipmentTracker` and `TradeUSD` already used this shape and are unchanged.
+
+### 3. Redeployment (supersedes 5 November 2026)
+
+| Contract | Address |
+|----------|---------|
+| `TradeChainCore` | `0x0372C1F622c6b46919a70a89EF85306565Eb98C5` |
+| `ShipmentTracker` | `0x41edc2FF37b7ce6Da9aD27d1aabDa703e2989539` |
+| `DocumentRegistry` | `0x9eCE26443f9647D1Cb715aB7971B5554a964695e` |
+| `ComplianceEngine` | `0x259684bb5c5b9198FffA4502248611C356844761` |
+| `LetterOfCredit` | `0xdC6Ee51c61226CC0E42C76921e94C011196A0650` |
+| `TradeUSD` | `0x2C262BE7C837E0236FC0346Ad70d6e86ECCb445d` |
+
+Creation transactions: `TradeUSD` `0x513ec4fc…c4509` (block 12186124); `TradeChainCore`
+`0x034ee59f…1d4d3` (block 12186125, also creating the four companions). The previous record is
+archived as [`deployments/sepolia-2026-11-05.json`](./deployments/sepolia-2026-11-05.json).
+
+### 4. Tooling notes
+
+- `hardhat.config.js`: the local network pins `hardfork: "cancun"` and enables
+  `allowUnlimitedContractSize`. The core's init code embeds its four companions (~42 kB, 85 % of the
+  EIP-3860 limit); coverage instrumentation roughly doubles it, and from the Osaka hardfork
+  EIP-7825 caps a single transaction at 2²⁴ gas, which broke `npx hardhat coverage`. Sepolia is
+  unaffected (production init code stays ~42 kB < 49,152).
+- `scripts/verify.js`: `ComplianceEngine` constructor args are now `core, registry, tracker`.
+- New test-only mocks: `contracts/mocks/FakeRegistry.sol` (forger that proves the codehash guard)
+  and `contracts/mocks/StaticDocumentDirectory.sol`.
+
+### 5. Verification results (this pass)
+
+| Check | Result |
+|-------|--------|
+| `npx hardhat compile` | 39 files, OK |
+| `npx hardhat test` | **97 passing** |
+| `npx hardhat coverage` | **100 % stmts · 93.88 % branch · 100 % funcs · 100 % lines** |
+| `npx solhint "contracts/**/*.sol"` | 0 errors |
+| Sepolia deploy + `verify.js` | six contracts redeployed and verified |
+| On-chain smoke test | every module role, `registry.core`, `compliance.directory` and the core's companion getters resolve to the new deployment; `payoutPhaseOf` returns the expected milestones |
+
+---
+
 ## 2026-11-15 — Post-review correctness fixes
 
 A focused review of the contract suite surfaced three behavioural issues that were fixed, each with a
@@ -126,5 +220,9 @@ _None blocking._ Minor, optional:
 
 ## Still outstanding (not code)
 
-- Demo video and the final project report.
-- Optional: export the **Workflow** page of `docs/diagrams/TradeChain.drawio` for the report.
+- Demo video.
+- Optional: export the **Workflow** page of `docs/diagrams/TradeChain.drawio` and refresh
+  `docs/diagrams/TradeChain-Architecture.png` to annotate the swappable registry
+  (`TradeChain-Architecture.png` still shows the pre-swap registry).
+- The final report is drafted: `CSIT5760_Final_Project_Report_21232072.docx` (update the table of
+  contents in Word and export to PDF before submission).

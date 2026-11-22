@@ -8,6 +8,14 @@ const { Incoterm, Phase, DocType, CID, LC, futureDeadline } = require("./helpers
 
 const bit = (d) => 1 << d;
 
+/** Test-only `IDocumentDirectory` that always resolves to `registryAddress`. */
+async function staticDirectory(registryAddress) {
+  const D = await ethers.getContractFactory("StaticDocumentDirectory");
+  const dir = await D.deploy(registryAddress);
+  await dir.waitForDeployment();
+  return dir;
+}
+
 describe("Companion contract internals", function () {
   let admin, exporter, importer, outsider;
 
@@ -91,7 +99,7 @@ describe("Companion contract internals", function () {
       const registry = await deploy();
       await expect(
         registry.connect(outsider).anchor(1n, DocType.CommercialInvoice, CID.invoice, outsider.address)
-      ).to.be.revertedWithCustomError(registry, "OnlyCore");
+      ).to.be.revertedWithCustomError(registry, "AccessControlUnauthorizedAccount");
     });
 
     it("anchors once and revokes once", async function () {
@@ -125,8 +133,43 @@ describe("Companion contract internals", function () {
   describe("ComplianceEngine", function () {
     it("guards the constructor", async function () {
       const C = await ethers.getContractFactory("ComplianceEngine");
-      await expect(C.deploy(ethers.ZeroAddress, admin.address)).to.be.revertedWithCustomError(C, "ZeroAddress");
-      await expect(C.deploy(admin.address, ethers.ZeroAddress)).to.be.revertedWithCustomError(C, "ZeroAddress");
+      await expect(C.deploy(ethers.ZeroAddress, admin.address, admin.address)).to.be.revertedWithCustomError(
+        C,
+        "ZeroAddress"
+      );
+      await expect(C.deploy(admin.address, ethers.ZeroAddress, admin.address)).to.be.revertedWithCustomError(
+        C,
+        "ZeroAddress"
+      );
+      await expect(C.deploy(admin.address, admin.address, ethers.ZeroAddress)).to.be.revertedWithCustomError(
+        C,
+        "ZeroAddress"
+      );
+    });
+
+    it("mounts its access control on the directory (core)", async function () {
+      const T = await ethers.getContractFactory("ShipmentTracker");
+      const tracker = await T.deploy(admin.address);
+      await tracker.waitForDeployment();
+      const R = await ethers.getContractFactory("DocumentRegistry");
+      const registry = await R.deploy(admin.address);
+      await registry.waitForDeployment();
+      const D = await ethers.getContractFactory("StaticDocumentDirectory");
+      const directory = await D.deploy(await registry.getAddress());
+      await directory.waitForDeployment();
+      const C = await ethers.getContractFactory("ComplianceEngine");
+      const compliance = await C.deploy(
+        await directory.getAddress(),
+        await registry.getAddress(),
+        await tracker.getAddress()
+      );
+      await compliance.waitForDeployment();
+
+      // The directory (the core in production) is the module's role authority.
+      expect(await compliance.hasRole(await compliance.DEFAULT_ADMIN_ROLE(), await directory.getAddress())).to.equal(
+        true
+      );
+      expect(await compliance.supportsInterface("0x7965db0b")).to.equal(true); // AccessControl
     });
 
     it("requiredForShipment returns the mask for the shipment's Incoterm", async function () {
@@ -136,8 +179,15 @@ describe("Companion contract internals", function () {
       const R = await ethers.getContractFactory("DocumentRegistry");
       const registry = await R.deploy(admin.address);
       await registry.waitForDeployment();
+      const D = await ethers.getContractFactory("StaticDocumentDirectory");
+      const directory = await D.deploy(await registry.getAddress());
+      await directory.waitForDeployment();
       const C = await ethers.getContractFactory("ComplianceEngine");
-      const compliance = await C.deploy(await registry.getAddress(), await tracker.getAddress());
+      const compliance = await C.deploy(
+        await directory.getAddress(),
+        await registry.getAddress(),
+        await tracker.getAddress()
+      );
       await compliance.waitForDeployment();
 
       await tracker.createOrder(importer.address, exporter.address, Incoterm.CIF, LC, await futureDeadline());
@@ -162,7 +212,11 @@ describe("Companion contract internals", function () {
       await registry.waitForDeployment();
 
       const C = await ethers.getContractFactory("ComplianceEngine");
-      const compliance = await C.deploy(await registry.getAddress(), await tracker.getAddress());
+      const compliance = await C.deploy(
+        await (await staticDirectory(await registry.getAddress())).getAddress(),
+        await registry.getAddress(),
+        await tracker.getAddress()
+      );
       await compliance.waitForDeployment();
 
       const L = await ethers.getContractFactory("LetterOfCredit");
@@ -205,7 +259,7 @@ describe("Companion contract internals", function () {
       const { loc } = await deploy();
       await expect(loc.connect(outsider).fund(1n, importer.address, LC)).to.be.revertedWithCustomError(
         loc,
-        "OnlyCore"
+        "AccessControlUnauthorizedAccount"
       );
       await expect(loc.setTreasury(ethers.ZeroAddress)).to.be.revertedWithCustomError(loc, "ZeroAddress");
     });

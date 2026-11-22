@@ -5,24 +5,38 @@
 The suite is **six deployed contracts plus one inlined type library**. `TradeChainCore` is the
 role authority and the single user entry point; it deploys and wires the other four in its
 constructor and receives `TradeUSD` as the injected settlement token (so it is never deployed twice).
+Each module's own `AccessControl` is **mounted on the core** — the core holds every module's
+`DEFAULT_ADMIN_ROLE` and `CONTROLLER_ROLE` and administers them via `setModuleRole`.
 
 ```
                          +---------------------- TradeChainCore -----------------------+
                          |  AccessControl (roles)   ·   IERC721Receiver (escrow)        |
-                         +---+---------------+---------------+---------------+----------+
-                    onlyCore |        onlyCore |        view  |      onlyCore
-                             v                 v              v               v
-                     ShipmentTracker   DocumentRegistry  ComplianceEngine  LetterOfCredit
-                     (+ ERC-721 title)
-                                                              reads:  registry + tracker
-                                                              LetterOfCredit escrows TradeUSD, calls compliance
+                         |  setModuleRole  ·  setDocumentRegistry  ·  documentRegistryOf|
+                         +---+----------------+-----------------+---------------+------+
+                   CONTROLLER |         CONTROLLER       |   view  |    CONTROLLER
+                              v                          v         v              v
+                      ShipmentTracker   DocumentRegistry (swappable)  ComplianceEngine  LetterOfCredit
+                      (+ ERC-721 title)                                 reads: registry per anchor + tracker
+                                                                        LetterOfCredit escrows TradeUSD
 ```
 
 `ShipmentTracker` is both the shipment aggregate and the **ERC-721 document of title**
-(`tokenId == shipmentId`). `TradeUSD` and `ShipmentTracker` each own an `AccessControl` whose admin
-is the core, so the core can mint `TradeUSD` (role-gated) and mint/transfer the title token. The
+(`tokenId == shipmentId`). `TradeUSD`, `ShipmentTracker`, `DocumentRegistry` and `LetterOfCredit`
+each own an `AccessControl` whose admin is the core, so the core can mint `TradeUSD` (role-gated),
+mint/transfer the title token and write document anchors. The
 ERC-721 `transferFrom`/`safeTransferFrom` surface is blocked in `ShipmentTracker._update`; only the
 core's `transferTitle` (called at settlement) can move the title. No proxies, no upgradeable patterns.
+
+### 1.1 Swappable DocumentRegistry
+
+`TradeChainCore.documentRegistry` is **mutable**. `setDocumentRegistry(address)` — callable only by
+`DEFAULT_ADMIN_ROLE` or `ROLE_REGISTRY_ADMIN` — replaces it. A replacement is accepted only when it
+is a `DocumentRegistry` bound to this core (`core() == address(this)`) *and* its runtime codehash
+equals the deployment-time registry's, so a look-alike contract cannot forge `isValid` and fake
+compliance. The registry used for each anchor is snapshotted in `_docRegistryOf[id][docType]`;
+`documentRegistryOf(id, docType)` returns that snapshot (or the active registry when unset) and
+`ComplianceEngine` resolves it per document, so a swap never hides documents that are already
+anchored and in-flight shipments keep settling.
 
 Deploy-time wiring (all performed in `TradeChainCore`'s constructor):
 
@@ -30,7 +44,7 @@ Deploy-time wiring (all performed in `TradeChainCore`'s constructor):
 |----------|-------------------------|
 | `ShipmentTracker` | `core` (also grants `CONTROLLER_ROLE` for the title token) |
 | `DocumentRegistry` | `core` |
-| `ComplianceEngine` | `registry`, `tracker` |
+| `ComplianceEngine` | `directory` (= core), `registry`, `tracker` |
 | `LetterOfCredit` | `core`, `token`, `tracker`, `compliance`, `treasury` (= core initially) |
 | `TradeChainCore` | `token` (an ERC-20, e.g. `TradeUSD`) |
 
@@ -42,6 +56,7 @@ Deploy-time wiring (all performed in `TradeChainCore`'s constructor):
 | `ShipmentTracker` | `_shipments[id]` | `Shipment{orderId, exporter, importer, term, phase, timestamps, lcAmount, riskHolder}` |
 | `ShipmentTracker` | `_owners[tokenId]` / `_tokenURIs[tokenId]` | ERC-721 title owner + `ipfs://<B/L CID>` (`tokenId == shipmentId`) |
 | `DocumentRegistry` | `_documents[id][docType]` | `DocRecord{cid, issuer, timestamp, verified}` |
+| `TradeChainCore` | `_docRegistryOf[id][docType]` | registry that holds that anchor (snapshot) |
 | `LetterOfCredit` | `_lcs[id]` | `LC{amount, funded, paid, reclaimed, dutyAmount, dutyPaid, dutyPayer}` |
 
 Ids are monotonic (`_nextOrderId`, `_nextShipmentId`, starting at 1); shipment ids also double as
@@ -62,9 +77,11 @@ Ids are monotonic (`_nextOrderId`, `_nextShipmentId`, starting at 1); shipment i
 | `forceFinalizeDelivery(id)` | Bank | phase `LoadedOnVessel`, docs complete | same, bypassing a stalling importer |
 | `reclaimExpiredLC(id)` | Importer / Bank / admin | past deadline, phase `LCFunded` | refunds escrow → `Reclaimed` |
 | `revokeDocument(id, docType)` | issuer or admin | document exists, verified | clears `verified` (invalid at payout) |
+| `setDocumentRegistry(registry)` | admin or `ROLE_REGISTRY_ADMIN` | bound to this core, matching runtime codehash | swaps the active registry; `DocumentRegistryReplaced` |
+| `setModuleRole(module, role, account, granted)` | admin | module is a core companion | grants/revokes a module role; `ModuleRoleSet` |
 
 **Views:** `getOrder`, `getShipment`, `getDocument`, `getLC`, `orderCount`, `shipmentCount`,
-`hasValidDocument`, `payoutPhaseOf`, `requiredDocumentsAt`, `isCompliant`, plus companion-address
+`hasValidDocument`, `documentRegistryOf`, `payoutPhaseOf`, `requiredDocumentsAt`, `isCompliant`, plus companion-address
 getters (`settlementToken`, `shipmentTracker`, `documentRegistry`,
 `complianceEngine`, `letterOfCredit`). The title token is read through `ShipmentTracker`
 (`ownerOf`, `tokenURI`, `exists`).
@@ -73,7 +90,10 @@ getters (`settlementToken`, `shipmentTracker`, `documentRegistry`,
 
 `DocumentRegistry.isValid(id, docType)` is true iff a CID is anchored **and** `verified` (not
 revoked). `ComplianceEngine.firstMissing` walks the required bitmask for the shipment's Incoterm ×
-phase and reverts with `MissingMandatoryDocument` on the first gap.
+phase and reverts with `MissingMandatoryDocument` on the first gap. Because the active registry is
+swappable, the engine resolves the registry that holds each anchor through the core
+(`documentRegistryOf`) and falls back to the deployment-time registry, so a registry swap never
+changes the validity of documents that are already anchored.
 
 ## 5. Payout engine
 

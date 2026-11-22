@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 import {TradeTypes} from "../libraries/TradeTypes.sol";
@@ -12,10 +13,16 @@ import {ComplianceEngine} from "./ComplianceEngine.sol";
 /// @title LetterOfCredit — escrow and L/C state machine
 /// @notice Holds the `TradeUSD` escrow and drives settlement: funding, customs duty, the atomic
 ///         payout at the Incoterm risk-transfer milestone, and the deadline refund (reclaim).
-///         Mutators are restricted to the `TradeChainCore`.
-/// @dev    Payout follows strict checks-effects-interactions and is `nonReentrant`.
-contract LetterOfCredit is ReentrancyGuard {
+/// @dev    Access control is **mounted on the `TradeChainCore`**: the core is granted
+///         `DEFAULT_ADMIN_ROLE` and `CONTROLLER_ROLE` at construction and every mutator is
+///         `CONTROLLER_ROLE`-gated, so the core remains the only writer while the core's own
+///         `AccessControl` administers who may hold that role.
+///         Payout follows strict checks-effects-interactions and is `nonReentrant`.
+contract LetterOfCredit is AccessControl, ReentrancyGuard {
     using SafeERC20 for IERC20;
+
+    /// @notice Role allowed to fund, settle, refund and re-point the escrow (held by the core).
+    bytes32 public constant CONTROLLER_ROLE = keccak256("CONTROLLER_ROLE");
 
     struct LC {
         uint256 shipmentId;
@@ -36,7 +43,6 @@ contract LetterOfCredit is ReentrancyGuard {
 
     mapping(uint256 id => LC) private _lcs;
 
-    error OnlyCore();
     error ZeroAddress();
     error InvalidAmount();
     error AlreadyFunded(uint256 id);
@@ -53,11 +59,6 @@ contract LetterOfCredit is ReentrancyGuard {
     event DutyPaid(uint256 indexed id, address indexed payer, uint256 amount);
     event LCRefunded(uint256 indexed id, address indexed importer, uint256 lcRefund, uint256 dutyRefund);
     event TreasuryUpdated(address indexed treasury);
-
-    modifier onlyCore() {
-        if (msg.sender != core) revert OnlyCore();
-        _;
-    }
 
     constructor(
         address core_,
@@ -78,6 +79,8 @@ contract LetterOfCredit is ReentrancyGuard {
         tracker = ShipmentTracker(tracker_);
         compliance = ComplianceEngine(compliance_);
         treasury = treasury_;
+        _grantRole(DEFAULT_ADMIN_ROLE, core_);
+        _grantRole(CONTROLLER_ROLE, core_);
     }
 
     // ---------------------------------------------------------------------
@@ -85,7 +88,7 @@ contract LetterOfCredit is ReentrancyGuard {
     // ---------------------------------------------------------------------
 
     /// @notice Records the L/C funding. The tokens are transferred to this contract by the core.
-    function fund(uint256 id, address payer, uint256 amount) external onlyCore {
+    function fund(uint256 id, address payer, uint256 amount) external onlyRole(CONTROLLER_ROLE) {
         LC storage lc = _lcs[id];
         if (lc.funded) revert AlreadyFunded(id);
         if (amount == 0) revert InvalidAmount();
@@ -98,7 +101,7 @@ contract LetterOfCredit is ReentrancyGuard {
     }
 
     /// @notice Records a customs-duty escrow (zero is allowed for duty-free destinations).
-    function payDuty(uint256 id, address payer, uint256 amount) external onlyCore {
+    function payDuty(uint256 id, address payer, uint256 amount) external onlyRole(CONTROLLER_ROLE) {
         LC storage lc = _lcs[id];
         if (!lc.funded) revert NotFunded(id);
         if (lc.dutyPaid) revert DutyAlreadyPaid(id);
@@ -111,7 +114,7 @@ contract LetterOfCredit is ReentrancyGuard {
     }
 
     /// @notice Releases the escrow to the exporter at the Incoterm risk-transfer milestone.
-    function settle(uint256 id, address exporter) external onlyCore nonReentrant {
+    function settle(uint256 id, address exporter) external onlyRole(CONTROLLER_ROLE) nonReentrant {
         LC storage lc = _lcs[id];
         if (!lc.funded) revert NotFunded(id);
         if (lc.paid || lc.reclaimed) revert AlreadySettled(id);
@@ -135,7 +138,7 @@ contract LetterOfCredit is ReentrancyGuard {
     }
 
     /// @notice Returns the escrow to the importer if the exporter never shipped before the deadline.
-    function refund(uint256 id) external onlyCore nonReentrant {
+    function refund(uint256 id) external onlyRole(CONTROLLER_ROLE) nonReentrant {
         LC storage lc = _lcs[id];
         if (!lc.funded) revert NotFunded(id);
         if (lc.paid || lc.reclaimed) revert AlreadySettled(id);
@@ -157,7 +160,7 @@ contract LetterOfCredit is ReentrancyGuard {
     }
 
     /// @notice Updates the duty treasury (customs-authority stand-in).
-    function setTreasury(address treasury_) external onlyCore {
+    function setTreasury(address treasury_) external onlyRole(CONTROLLER_ROLE) {
         if (treasury_ == address(0)) revert ZeroAddress();
         treasury = treasury_;
         emit TreasuryUpdated(treasury_);

@@ -88,7 +88,7 @@ coverage with 0 High Slither findings** (Medium triaged), and **seven** document
 ### B.11 — Metric consistency  *(a considerably high bar is enough)*
 **Where:** §7 last row; §8 Testing Plan; §9 Work Plan Phase 2.
 **Change to:** align on one clearly-high bar:
-> "**0 High-severity Slither findings** (Medium findings are reported and triaged manually), **≥ 90 % statement and branch coverage**." (The repo reaches 100 % statements / **93.08 % branch**.)
+> "**0 High-severity Slither findings** (Medium findings are reported and triaged manually), **≥ 90 % statement and branch coverage**." (The repo reaches 100 % statements / **93.88 % branch**.)
 
 ---
 
@@ -187,6 +187,6 @@ transfers described as holder-restricted.
 |---|----------|----------|
 | 1 | IPFS replication | **Per-role kubo nodes; each role keeps its own copy.** Any involved party reads a document by CID through the DApp; a counterparty may keep an extra copy with `scripts/ipfs-pin.js`. |
 | 2 | Confidentiality | Out of scope (public CIDs); the model gives consortium retrieval by convention, not cryptographic secrecy. Restricting the swarm / encrypting is optional. |
-| 3 | Quality bar | **≥ 90 % branch/statement coverage, 0 High Slither findings** (Medium triaged). Implemented: 100 % statements / **93.08 % branch** / 100 % functions / 100 % lines; CI fails on High. |
+| 3 | Quality bar | **≥ 90 % branch/statement coverage, 0 High Slither findings** (Medium triaged). Implemented: 100 % statements / **93.88 % branch** / 100 % functions / 100 % lines; CI fails on High. |
 | 4 | Document count | **Seven** `DocType`s incl. **Customs Clearance**. |
 | 5 | `ShipmentTracker` + `ShipmentNFT` | **Merge into one** (`tokenId == shipmentId`); title transfer gated in `_update`. |

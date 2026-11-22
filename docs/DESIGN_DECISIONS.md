@@ -25,6 +25,8 @@ design-review questions; items marked **[Pn]** respond to the proposal feedback 
 | D17 | **`nonReentrant` on the internal settlement/refund** [Q19] | Guard external entry points only | The guard belongs where value leaves the contract; external callers are also protected by phase checks. |
 | D18 | **Tamper-evident "locked" anchors + revocable verification** [P9] | Strict immutability | A CID can never be silently replaced; certificates can be withdrawn and become invalid at payout. |
 | D19 | **`ShipmentNFT` merged into `ShipmentTracker`** | Separate ERC-721 contract | The shipment record and its title share one identity (`tokenId == shipmentId`); merging removes duplicated existence checks and lets `_update` close the ERC-721 transfer surface (the separate token left `transferFrom` open, contradicting the milestone gate). |
+| D20 | **Module access control mounted on `TradeChainCore`** | Each module hard-codes `msg.sender == core` | Every companion grants its `DEFAULT_ADMIN_ROLE` and `CONTROLLER_ROLE` to the core at construction; the core administers them via `setModuleRole`. One authority, and a module writer can be revoked without redeploying. |
+| D21 | **Swappable `DocumentRegistry`** | Hard-wired registry address | The admin or `ROLE_REGISTRY_ADMIN` can replace the registry. Two guards keep it safe: the replacement must be bound to this core and its runtime code must match the deployment-time registry (a look-alike could otherwise forge `isValid`). Anchors snapshot their registry, so a swap never orphans in-flight documents. |
 
 ## Consequences / trade-offs
 
