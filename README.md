@@ -323,9 +323,9 @@ python -m http.server 8090                              # terminal 2  (or: npx s
 
 - Opens pre-set to the verified Sepolia deployment without opening a wallet permission prompt. It
   uses a previously authorized MetaMask account if one exists; otherwise it is read-only. Click
-  **Connect wallet** to authorize MetaMask for transactions (or use
-  the test-only in-memory key only with a local Hardhat node). Account and network changes are
-  reflected by the console.
+  **Connect wallet** to authorize MetaMask for transactions, then choose the active authorized account
+  from the header menu (or use the test-only in-memory key only with a local Hardhat node). Account and
+  network changes are reflected by the console.
 - `ethers` is vendored locally (`ui/ethers.umd.min.js`), so it also works offline.
 - Transactions are queued, so clicking two actions in quick succession cannot race on the nonce.
 
@@ -489,7 +489,7 @@ security criteria and its report is retained as a build artifact.
 |-------|------------|-------------|--------|
 | **Phase 1** | Develop the six contracts + tests | Compiling, tested suite | ✅ done (97 tests) |
 | **Phase 2** | Security review, adversarial tests, coverage | ≥ 90 % branch coverage, Slither report | ✅ done (100 % stmts / 93.88 % branch) |
-| **Phase 3** | Sepolia deploy + verify, DApp + flow console, demo video, report | Verified contracts, DApp, report | 🟡 **deploy + verify done · report drafted** (`CSIT5760_Final_Project_Report_21232072.docx`) · video pending |
+| **Phase 3** | Sepolia deploy + verify, DApp + flow console, report | Verified contracts, DApp, report | ✅ done **deploy + verify done · report drafted** (`CSIT5760_Final_Project_Report_21232072.docx`) |
 
 Progress log: see `git log --oneline` and [`CHANGES.md`](./CHANGES.md).
 

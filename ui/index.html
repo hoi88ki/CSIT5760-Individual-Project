@@ -26,6 +26,8 @@
   header .spacer { flex: 1; }
   .badge { padding: 3px 10px; border-radius: 999px; background: var(--chip); color: var(--muted); font-size: 12px; }
   .badge.ok { color: var(--ok); } .badge.warn { color: var(--warn); } .badge.bad { color: var(--bad); }
+  header .wallet-select { width: auto; min-width: 190px; max-width: 270px; padding: 6px 9px; }
+  header .wallet-select:disabled { opacity: .7; }
   main { padding: 18px; display: grid; gap: 16px; max-width: 1280px; margin: 0 auto; }
   section {
     background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px;
@@ -70,10 +72,16 @@
   .kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 6px 14px; font-size: 13px; }
   .kv b { color: var(--muted); font-weight: 500; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .overview-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 22px; margin-top: 12px; }
+  .guide { padding-left: 22px; margin: 8px 0; }
   .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
   .hint { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
   .pill { display: inline-block; padding: 1px 8px; margin-left: 6px; border-radius: 999px; background: var(--chip); font-size: 11px; color: var(--muted); }
   .mono { font-family: Consolas, "Courier New", monospace; font-size: 12px; }
+  @media (max-width: 760px) {
+    .overview-columns { grid-template-columns: 1fr; }
+    header .wallet-select { min-width: 150px; max-width: 100%; }
+  }
 </style>
 </head>
 <body>
@@ -81,6 +89,9 @@
   <h1>Trade<span>Chain</span> · Flow Console</h1>
   <span id="net" class="badge">not connected</span>
   <span id="acct" class="badge">—</span>
+  <select id="accountSelect" class="wallet-select" aria-label="Active MetaMask account" title="Choose which authorized MetaMask account signs transactions" disabled>
+    <option value="">Connect wallet to list accounts</option>
+  </select>
   <span id="roles" class="badge">no roles loaded</span>
   <span class="spacer"></span>
   <button id="btnConnect" class="primary">Connect wallet</button>
@@ -105,50 +116,48 @@
     <button id="btnLoad">Load core</button>
     <button id="btnApprove">Approve TradeUSD (max)</button>
     <p class="hint">
-      Open this page with <code>npx serve ui</code> / <code>python -m http.server -d ui</code> so the IPFS calls
-      are not blocked by <code>file://</code> CORS. All contract reads work without a wallet.
+      Open this page over HTTP (not <code>file://</code>) so IPFS calls are not blocked by CORS. After connecting,
+      choose the active signer in the account menu in the header; only accounts authorized for this site are listed.
+      Use MetaMask's connected-site account settings to authorize additional accounts. Contract reads work without a wallet.
     </p>
   </section>
 
-  <!-- 1. flow stepper ----------------------------------------------------- -->
-  <section>
-    <h2>1 · Shipment lifecycle</h2>
+  <!-- 1. shipment overview: lifecycle, viewer and complete role-by-role flow -->
+  <section id="shipmentOverview">
+    <h2>1 · Shipment overview — lifecycle, viewer &amp; full flow</h2>
+    <div class="row">
+      <div style="max-width:180px"><label>Shipment id</label><input id="shipId" value="1" /></div>
+      <div style="max-width:180px"><label>Incoterm (for a not-yet-created shipment)</label>
+        <select id="term"><option>EXW</option><option>FOB</option><option>CIF</option><option>DDP</option></select>
+      </div>
+      <div style="max-width:130px;align-self:flex-end"><button id="btnRefresh" class="primary">Refresh shipment</button></div>
+      <div style="flex:1;align-self:flex-end"><span class="hint">The viewer, lifecycle and flow guide below all update for this shipment id.</span></div>
+    </div>
+    <h3>Shipment lifecycle</h3>
     <div id="stepper" class="steps"></div>
     <div class="kv" id="flowMeta"></div>
+    <div class="kv" id="shipmentView"></div>
     <p class="hint">
-      Payout and risk transfer follow the Incoterm: <b>EXW</b> at pickup · <b>FOB/CIF</b> on the vessel ·
+      Risk transfer and payout: <b>EXW</b> at pickup · <b>FOB/CIF</b> on vessel loading ·
       <b>DDP</b> at final delivery (after clearance + duty). The title NFT is released separately at final delivery.
     </p>
-  </section>
-
-  <div class="grid2">
-    <!-- 2. flow guide ------------------------------------------------------ -->
-    <section>
-      <h2>2 · Flow guide (who does what, next)</h2>
-      <ol class="guide" id="guide"></ol>
-      <p class="hint">Tick boxes below are derived from on-chain state for the selected shipment and Incoterm.</p>
-    </section>
-
-    <!-- 3. viewers --------------------------------------------------------- -->
-    <section>
-      <h2>3 · Viewers</h2>
-      <div class="row">
-        <div><label>Order id</label><input id="orderId" value="1" /></div>
-        <div><label>Shipment id</label><input id="shipId" value="1" /></div>
-        <div style="max-width:140px"><label>Incoterm</label>
-          <select id="term"><option>EXW</option><option>FOB</option><option>CIF</option><option>DDP</option></select>
-        </div>
-        <div style="max-width:120px;align-self:flex-end"><button id="btnRefresh" class="primary">Refresh</button></div>
+    <div class="overview-columns">
+      <div>
+        <h3>Linked order</h3><div class="kv" id="orderView">—</div>
+        <h3>Letter of credit &amp; duty</h3><div class="kv" id="lcView">—</div>
+        <h3>Document of title (e-B/L NFT)</h3><div class="kv" id="nftView">—</div>
       </div>
-      <h3>Order</h3><div class="kv" id="orderView">—</div>
-      <h3>Letter of credit &amp; duty</h3><div class="kv" id="lcView">—</div>
-      <h3>Document of title (e-B/L NFT)</h3><div class="kv" id="nftView">—</div>
-    </section>
-  </div>
+      <div>
+        <h3>Whole trade flow · responsible role and progress</h3>
+        <ol class="guide" id="guide"></ol>
+        <p class="hint">Completed steps are checked from on-chain state. The highlighted next step shows the normal path; bank force-finalization and expired-L/C reclaim are alternatives.</p>
+      </div>
+    </div>
+  </section>
 
   <!-- 4. documents -------------------------------------------------------- -->
   <section>
-    <h2>4 · Documents (IPFS CIDs anchored per role)</h2>
+    <h2>2 · Documents (IPFS CIDs anchored per role)</h2>
     <div class="grid2">
       <div>
         <table id="docTable">
@@ -178,7 +187,7 @@
   <div class="grid3">
     <!-- 5. order & shipment ------------------------------------------------ -->
     <section>
-      <h2>5 · Order → Shipment</h2>
+      <h2>3 · Create order → shipment</h2>
       <label>Exporter address</label><input id="exporter" placeholder="0x…" />
       <div class="row">
         <div><label>Incoterm</label>
@@ -199,7 +208,7 @@
 
     <!-- 6. milestones ------------------------------------------------------ -->
     <section>
-      <h2>6 · Milestones &amp; settlement</h2>
+      <h2>4 · Milestones &amp; settlement</h2>
       <label>B/L or AWB CID (anchored by logistics at loading)</label><input id="blCid" placeholder="bafy…" />
       <button id="btnPickup">Logistics → confirmPickup</button>
       <button id="btnLoad2">Logistics → confirmVesselLoading</button>
@@ -214,7 +223,7 @@
 
     <!-- 7. admin ----------------------------------------------------------- -->
     <section>
-      <h2>7 · Admin &amp; registry</h2>
+      <h2>5 · Admin &amp; registry</h2>
       <label>Grant roles (checked against the connected account)</label>
       <div id="roleBoxes" class="row"></div>
       <div class="row">
@@ -240,7 +249,7 @@
 
   <!-- 8. log -------------------------------------------------------------- -->
   <section>
-    <h2>8 · Activity log</h2>
+    <h2>6 · Activity log</h2>
     <pre id="log">Ready.</pre>
   </section>
 </main>
@@ -306,6 +315,7 @@ const TOKEN_ABI = ["function approve(address spender, uint256 amount) returns (b
 
 /* ------------------------------------------------------------------ state */
 let provider = null, signer = null, account = "", chainId = 0n;
+let availableAccounts = [];
 let core, tracker, registry, loc, token;
 let roleIds = {}, myRoles = [];
 const registryCache = {};
@@ -325,13 +335,48 @@ function log(msg, cls) {
 }
 
 /* ------------------------------------------------------------- connection */
+function renderAccountOptions(accounts) {
+  const select = $("accountSelect");
+  select.innerHTML = "";
+  if (!accounts.length) {
+    select.add(new Option("Connect wallet to list accounts", ""));
+    select.disabled = true;
+    return;
+  }
+  accounts.forEach((address, index) => {
+    const option = new Option(`${index + 1}: ${address}`, address);
+    option.title = address;
+    select.add(option);
+  });
+  select.value = account;
+  select.disabled = false;
+  select.title = accounts.length > 1
+    ? "Choose which authorized MetaMask account signs transactions"
+    : "Only one MetaMask account is currently authorized for this site";
+}
+
+async function selectAccount(address) {
+  if (!window.ethereum || !availableAccounts.includes(address)) return;
+  try {
+    account = address;
+    provider = new ethers.BrowserProvider(window.ethereum);
+    signer = await provider.getSigner(address);
+    $("acct").textContent = short(address);
+    await loadCore();
+    log(`Active MetaMask account: ${address}`);
+  } catch (e) { log("account selection ✘ " + (e.shortMessage || e.message)); }
+}
+
 async function connect(requestAccounts = true) {
   try {
     if (window.ethereum) {
       provider = new ethers.BrowserProvider(window.ethereum);
-      const accounts = await provider.send(requestAccounts ? "eth_requestAccounts" : "eth_accounts", []);
-      account = accounts[0] || "";
+      const nextAccounts = await provider.send(requestAccounts ? "eth_requestAccounts" : "eth_accounts", []);
+      const previousSelection = account;
+      availableAccounts = nextAccounts;
+      account = nextAccounts.find((address) => address.toLowerCase() === previousSelection.toLowerCase()) || nextAccounts[0] || "";
       signer = account ? await provider.getSigner(account) : null;
+      renderAccountOptions(availableAccounts);
       if (!account && requestAccounts) throw new Error("No wallet account was authorized.");
     } else if ($("pk").value.trim().startsWith("0x") && $("pk").value.trim().length > 10) {
       provider = new ethers.JsonRpcProvider($("rpc").value);
@@ -343,6 +388,10 @@ async function connect(requestAccounts = true) {
       signer = null;
       account = "";
       if (requestAccounts) log("MetaMask is not available — connected read-only.");
+    }
+    if (!window.ethereum) {
+      availableAccounts = [];
+      renderAccountOptions(availableAccounts);
     }
     const net = await provider.getNetwork();
     chainId = net.chainId;
@@ -371,7 +420,7 @@ async function loadCore() {
       roleIds[n] = await core[n]();
     }
     await refreshRoles();
-    $("shipId").value = "1";
+    if (!$('shipId').value.trim()) $('shipId').value = "1";
     await refresh();
     log("Loaded core " + addr);
   } catch (e) { log("load ✘ " + (e.shortMessage || e.message)); }
@@ -433,6 +482,13 @@ async function refresh() {
   try {
     $("term").value = INCOTERMS[Number(s.term)];
     stepper(Number(s.phase), Number(s.term));
+    $("shipmentView").innerHTML = kv([
+      ["Shipment", `#${s.id}`], ["Phase", PHASES[Number(s.phase)]],
+      ["Exporter", short(s.exporter)], ["Importer", short(s.importer)],
+      ["Risk holder", short(s.riskHolder)],
+      ["Created", new Date(Number(s.createdAt) * 1000).toLocaleString()],
+      ["Deadline", new Date(Number(s.deadline) * 1000).toLocaleString()],
+    ]);
 
     // order
     let orderHtml = "—";
@@ -476,7 +532,8 @@ async function refresh() {
 async function renderEmpty(idBig) {
   const term = Math.max(0, INCOTERMS.indexOf($("term").value));
   stepper(0, term);
-  $("orderView").innerHTML = "no order with this id yet";
+  $("shipmentView").innerHTML = kv([["Shipment", `#${idBig}`], ["Status", "Not created yet"], ["Next", "Importer creates an order"]]);
+  $("orderView").innerHTML = "no linked order yet";
   $("lcView").innerHTML = "not funded";
   $("nftView").innerHTML = "not minted";
   const tb = $("docTable").querySelector("tbody"); tb.innerHTML = "";
@@ -637,6 +694,7 @@ $("preset").onchange = () => {
 $("preset").value = "sepolia"; $("core").value = SEPOLIA.core; $("rpc").value = SEPOLIA.rpc;
 
 $("btnConnect").onclick = connect;
+$("accountSelect").onchange = (event) => selectAccount(event.target.value);
 $("btnLoad").onclick = () => loadCore();
 $("btnRefresh").onclick = () => refresh();
 $("shipId").onchange = () => refresh();

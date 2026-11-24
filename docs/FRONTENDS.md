@@ -5,7 +5,7 @@ TradeChain includes two browser interfaces that both connect to the same `TradeC
 | Interface | Location | Start command | Wallet behavior |
 |---|---|---|---|
 | React role dashboard | [`dapp/`](../dapp/) | `cd dapp && npm install && npm run dev` | Explicitly requests MetaMask account access when you click **Connect MetaMask / Load**. Without MetaMask, it uses the configured JSON-RPC endpoint. |
-| No-build flow console | [`ui/index.html`](../ui/index.html) | `python -m http.server 8090` from the repository root | Starts without a permission prompt; it can use an already-authorized MetaMask account, otherwise it is read-only. Click **Connect wallet** to authorize an account. |
+| No-build flow console | [`ui/index.html`](../ui/index.html) | `python -m http.server 8090` from the repository root | Starts without a permission prompt; it can use an already-authorized MetaMask account, otherwise it is read-only. Click **Connect wallet** to authorize accounts, then choose the active signer from the header account menu. |
 
 ## Connect using MetaMask
 
