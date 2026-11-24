@@ -73,3 +73,6 @@ dapp/out/
 dapp/dist/
 dapp/node_modules/
 dapp/.env.local
+
+QUESTIONS.md
+CSIT5760*
