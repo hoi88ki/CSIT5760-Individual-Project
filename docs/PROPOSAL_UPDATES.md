@@ -1,9 +1,27 @@
-# Proposal update guide — TradeChain (CSIT5760_Project_Proposal_21232072.docx)
+# Proposal review notes — TradeChain
 
-This maps every feedback item (A.1–C.15) to the **exact place in the proposal** and the suggested
-replacement text. It is written so you can apply the edits directly in Word.
+This records how review feedback (A.1–C.15) maps to the submitted
+[`CSIT5760_Project_Proposal_21232072.pdf`](../CSIT5760_Project_Proposal_21232072.pdf) and the implementation.
+The suggested wording below is retained as a traceability aid; it is not an instruction to edit the
+PDF in Word. Where proposal text and implementation differ, this file and the README describe the
+implemented behavior.
 
 Legend: **[§n]** = proposal section number · **→** = suggested wording.
+
+## Implementation clarifications against the submitted proposal
+
+The proposal is the project scope/reference, but the code is authoritative for runtime behavior:
+
+- **Title versus settlement:** the proposal describes e-B/L transfer at the settlement milestone. The
+  implementation currently transfers the ERC-721 title to the importer only in final delivery
+  (`confirmFinalDelivery` or bank `forceFinalizeDelivery`). EXW/FOB/CIF L/C payout and risk transfer
+  can happen earlier; the title remains in core escrow until delivery. This is documented in the
+  README and architecture notes; the contract was not changed as part of this documentation/UI task.
+- **Bank review:** there is no separate bank approval/document-examination function. Compliance is
+  checked on-chain against the required document set; the bank role can force-finalize a shipment
+  after the objective delivery conditions are met.
+- **Proposal objective status:** the title-transfer wording in OBJ-1 should be read alongside the
+  implementation clarification above. No claim is made here that the proposal PDF itself was edited.
 
 ---
 
@@ -13,7 +31,7 @@ Legend: **[§n]** = proposal section number · **→** = suggested wording.
 **Where:** §4 *Core Smart Contract Functions*, bullet **"Shipment Tracking and Ownership Management"**; and §5 table row **`ShipmentTracker.sol`** (the e-B/L token is merged into `ShipmentTracker`; see the merge section below).
 **Current:** "represent shipment ownership through transferable NFTs" / "ERC-721 token representing shipment ownership, supporting minting and ownership transfer."
 **Change to:** frame it as an **electronic Bill of Lading / document-of-title NFT**, *not* plain ownership.
-> "Represent the negotiable document of title (the e-B/L) as an ERC-721 token. It is minted to, and escrowed by, `TradeChainCore`; its metadata is set when the B/L/AWB is anchored; and it is transferred to the importer at the settlement milestone. Transfer is gated by the contract according to the selected Incoterm and the shipment phase (not freely transferable)."
+> "Represent the document of title (the e-B/L) as an ERC-721 token. It is minted to, and escrowed by, `TradeChainCore`; its metadata is set when the B/L/AWB is anchored; public transfers are blocked; and it is released to the importer only at final delivery. Track risk transfer and L/C payout separately at the selected Incoterm milestone."
 
 Add one clarifying sentence: *risk* is tracked separately (`riskHolder`, Incoterm-based) and *property/ownership* follows the sale contract, so the three concepts are not conflated.
 
@@ -38,7 +56,7 @@ Also add a phrase to §5 `DocumentRegistry.sol`: "per `DocType`, records the CID
 ### A.5 — Letter-of-Credit realism  *(fix)*
 **Where:** §4 bullet **"Letter of Credit Management"**; §5 row **`LetterOfCredit.sol`**.
 **Change to:** state who does what:
-> "The **importer** funds the L/C escrow in `TradeUSD`; the **bank** role validates the documentary presentation and may **force-finalize** a stalled shipment once the objective milestones are complete; settlement is a single atomic payout to the exporter at the Incoterm risk-transfer milestone, and the escrow is refunded to the importer if the exporter never ships before the deadline."
+> "The **importer** funds the L/C escrow in `TradeUSD`; the contract checks the required documents and shipment conditions, while the **bank** role may **force-finalize** a stalled delivery once objective conditions are met. Settlement is a single atomic payout to the exporter at the Incoterm risk-transfer milestone, and the escrow is refunded to the importer if the exporter never ships before the deadline."
 
 ### A.6 — `TradeUSD` open minting  *(fix)*
 **Where:** §5 row **`TradeUSD.sol`**.
@@ -121,8 +139,8 @@ report.
 
 The accompanying implementation already applies A.1–A.6, B.7, B.8, B.10 and B.11:
 six contracts (`TradeChainCore`, `LetterOfCredit`, `ShipmentTracker`, `ComplianceEngine`,
-`DocumentRegistry`, `TradeUSD`), role-gated minting, per-Incoterm compliance, milestone-gated title
-transfer, consortium (per-role) IPFS, and no dispute module / no `Pausable`. The e-B/L ERC-721
+`DocumentRegistry`, `TradeUSD`), role-gated minting, per-Incoterm compliance, final-delivery title
+release, consortium (per-role) IPFS, and no dispute module / no `Pausable`. The e-B/L ERC-721
 document of title is **inside `ShipmentTracker`** (`tokenId == shipmentId`), so there is no separate
 `ShipmentNFT` contract. See [`REFACTOR_PLAN.md`](./REFACTOR_PLAN.md) for the mapping.
 
@@ -139,10 +157,10 @@ both facets of the shipment. Merging:
 - **fixes a real gate**: the standalone ERC-721 inherited OpenZeppelin's public `transferFrom`, so the
   owner could move the title freely (contradicting "not freely transferable"). The merged
   `ShipmentTracker` overrides `_update` and rejects every externally initiated transfer; only the
-  core's `transferTitle` moves the title at the settlement milestone.
+  core's `transferTitle` releases the title during final delivery.
 
-The implementation, tests, scripts and diagrams are already updated; the proposal needs the edits
-below (the diagram already shows **6 contracts**).
+The implementation, tests, scripts and diagrams reflect the merged design; the edits below document
+the recommended proposal wording (the submitted diagram already shows **6 contracts**).
 
 ### Exact proposal edits for the merge
 
@@ -150,7 +168,7 @@ below (the diagram already shows **6 contracts**).
 |---|----------|------------------|
 | M1 | §3 **OBJ-4** | "All **seven** contracts verified" → "All **six** contracts verified". |
 | M2 | §5 table | **Delete** the `ShipmentNFT.sol` row. |
-| M3 | §5 `ShipmentTracker.sol` row | Replace with: "*Orders, shipment records, lifecycle milestones **and the e-B/L document of title**. One ERC-721 token per shipment (`tokenId = shipmentId`) is minted to, and escrowed by, `TradeChainCore`; its `tokenURI` is set when the B/L/AWB is anchored; and it is transferred to the importer at the settlement milestone. Public ERC-721 transfers are rejected, so title moves only through the core at the Incoterm-correct milestone.*" Purpose: "*Shipment lifecycle tracking + digital document of title (e-B/L).*" |
+| M3 | §5 `ShipmentTracker.sol` row | Replace with: "*Orders, shipment records, lifecycle milestones **and the e-B/L document of title**. One ERC-721 token per shipment (`tokenId = shipmentId`) is minted to, and escrowed by, `TradeChainCore`; its `tokenURI` is set when the B/L/AWB is anchored; public ERC-721 transfers are rejected; and the core releases title to the importer only at final delivery. Risk transfer and L/C payout follow the Incoterm-specific milestones and may occur earlier.*" Purpose: "*Shipment lifecycle tracking + digital document of title (e-B/L).*" |
 | M4 | §9 **Phase 1** | "Develop the **7** modular contracts" → "Develop the **6** modular contracts"; `^0.8.20` → `^0.8.24`. |
 | M5 | §9 **Phase 3** | "Deploy and verify all **7** contracts" → "all **6** contracts". |
 | M6 | §7 **Smart Contract Vulnerabilities** row | "cross-contract calls to **`ShipmentNFT.sol`** (ERC-721)" → "**`ShipmentTracker.sol`** (ERC-721 title)". |

@@ -116,8 +116,8 @@
     <div id="stepper" class="steps"></div>
     <div class="kv" id="flowMeta"></div>
     <p class="hint">
-      Payout, risk transfer and the title NFT all move at the Incoterm milestone:
-      <b>EXW</b> at pickup · <b>FOB/CIF</b> on the vessel · <b>DDP</b> at final delivery (after clearance + duty).
+      Payout and risk transfer follow the Incoterm: <b>EXW</b> at pickup · <b>FOB/CIF</b> on the vessel ·
+      <b>DDP</b> at final delivery (after clearance + duty). The title NFT is released separately at final delivery.
     </p>
   </section>
 
@@ -325,13 +325,14 @@ function log(msg, cls) {
 }
 
 /* ------------------------------------------------------------- connection */
-async function connect() {
+async function connect(requestAccounts = true) {
   try {
     if (window.ethereum) {
       provider = new ethers.BrowserProvider(window.ethereum);
-      await provider.send("eth_requestAccounts", []);
-      signer = await provider.getSigner();
-      account = await signer.getAddress();
+      const accounts = await provider.send(requestAccounts ? "eth_requestAccounts" : "eth_accounts", []);
+      account = accounts[0] || "";
+      signer = account ? await provider.getSigner(account) : null;
+      if (!account && requestAccounts) throw new Error("No wallet account was authorized.");
     } else if ($("pk").value.trim().startsWith("0x") && $("pk").value.trim().length > 10) {
       provider = new ethers.JsonRpcProvider($("rpc").value);
       signer = new ethers.Wallet($("pk").value.trim(), provider);
@@ -340,14 +341,15 @@ async function connect() {
     } else {
       provider = new ethers.JsonRpcProvider($("rpc").value);
       signer = null;
-      log("No wallet and no test key — read-only mode.");
+      account = "";
+      if (requestAccounts) log("MetaMask is not available — connected read-only.");
     }
     const net = await provider.getNetwork();
     chainId = net.chainId;
     $("net").textContent = `chain ${chainId}` + (chainId === 11155111n ? " (Sepolia)" : "");
     $("net").className = "badge " + (chainId === 11155111n || chainId === 31337n ? "ok" : "warn");
     $("acct").textContent = account ? short(account) : "read-only";
-    if (signer) $("btnConnect").textContent = "Reconnect";
+    $("btnConnect").textContent = account ? "Reconnect wallet" : "Connect wallet";
     await loadCore();
   } catch (e) { log("connect ✘ " + (e.shortMessage || e.message)); }
 }
@@ -688,8 +690,12 @@ $("btnViewDoc").onclick = async () => {
   catch (err) { log("ipfs cat ✘ " + err.message); }
 };
 
-if (window.ethereum) window.ethereum.on?.("accountsChanged", () => connect());
-connect();
+if (window.ethereum?.on) {
+  window.ethereum.on("accountsChanged", (accounts) => connect(false));
+  window.ethereum.on("chainChanged", () => connect(false));
+}
+// Initialise views without opening MetaMask's permission prompt on page load.
+connect(false);
 </script>
 </body>
 </html>

@@ -25,7 +25,7 @@ Each module's own `AccessControl` is **mounted on the core** — the core holds 
 each own an `AccessControl` whose admin is the core, so the core can mint `TradeUSD` (role-gated),
 mint/transfer the title token and write document anchors. The
 ERC-721 `transferFrom`/`safeTransferFrom` surface is blocked in `ShipmentTracker._update`; only the
-core's `transferTitle` (called at settlement) can move the title. No proxies, no upgradeable patterns.
+core's `transferTitle` (called during final delivery) can move the title. Payout/risk transfer may happen earlier for EXW/FOB/CIF; title release is a separate final-delivery action. No proxies, no upgradeable patterns.
 
 ### 1.1 Swappable DocumentRegistry
 

@@ -16,14 +16,18 @@ npm install
 npm run dev        # → http://localhost:5173
 ```
 
-1. Open <http://localhost:5173>.
-2. Paste the **TradeChainCore** address and click **Connect / Load**.
-3. Choose the **active account** (with a local node, `eth_accounts` returns the unlocked role
-   wallets — Exporter, Importer, Bank, Logistics, Verifier — no private keys needed).
-4. Walk the numbered panels: order → shipment → documents/funding → milestones.
+1. Open <http://localhost:5173> in a browser with MetaMask installed and unlocked.
+2. Select the chain where the core is deployed (Sepolia `11155111` or local Hardhat `31337`).
+3. Paste the **TradeChainCore** address and click **Connect MetaMask / Load**. MetaMask asks you to
+   authorize the page; select an account that has the role needed for the action.
+4. Walk the numbered panels: order → shipment → documents/funding → milestones. MetaMask asks you
+   to review and sign each transaction.
 
-> With **MetaMask** the page uses it automatically; switch MetaMask to the Hardhat/Sepolia
-> network and select the relevant role wallet.
+The dashboard listens for MetaMask account and chain changes and refreshes its connection. It does
+not request a network switch automatically: select the correct network yourself. Without MetaMask,
+the configured `VITE_RPC_URL` is used; local Hardhat exposes unlocked test accounts, while a generic
+RPC endpoint is typically read-only. See [`../docs/FRONTENDS.md`](../docs/FRONTENDS.md) for role,
+network, and local-wallet setup.
 
 ## Off-chain documents (per-role IPFS)
 

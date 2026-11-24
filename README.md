@@ -8,9 +8,9 @@ TradeChain is an on-chain documentary trade-finance and supply-chain tracker bui
 modular smart contracts**. It stores trade documents on **IPFS** (one kubo node per participant)
 and verifies only their **CIDs** plus the **issuer's role** on **Ethereum**. Exporters, importers,
 banks, logistics providers, verifiers/authorities and the administrator interact through
-**role-gated** contracts, and the suite acts as an automated **Letter-of-Credit examining bank**
-that releases a **100 % atomic payout at the exact milestone where risk transfers under the chosen
-Incoterm** (EXW / FOB / CIF / DDP).
+**role-gated** contracts, and the suite applies automated **Letter-of-Credit documentary-compliance
+rules** to release a **100 % atomic payout at the exact milestone where risk transfers under the
+chosen Incoterm** (EXW / FOB / CIF / DDP).
 
 ---
 
@@ -45,17 +45,18 @@ forgery. TradeChain removes the trusted intermediary for the *verification and s
 - **Documents stay off-chain** (IPFS). Only **CIDs** are anchored on-chain.
 - **Attestations are role-gated.** Inspection/insurance/customs certificates can only be anchored
   by the authorised verifier address, and can be revoked (invalidating them at payout).
-- **Title becomes a token.** The e-B/L is an **ERC-721 document of title** owned by
-  `ShipmentTracker` (one token per shipment, `tokenId == shipmentId`), escrowed by the core and
-  released to the importer at the Incoterm-correct milestone.
+- **The e-B/L is represented on-chain.** It is an **ERC-721 document of title** owned by
+  `ShipmentTracker` (one token per shipment, `tokenId == shipmentId`) and initially escrowed by the
+  core. Public token transfers are blocked; the core releases title to the importer at final delivery.
 - **Payout follows risk.** The contract validates the Incoterm-mandated document set and executes a
-  **100 % atomic payout** exactly when risk transfers.
+  **100 % atomic payout** at the Incoterm's risk-transfer milestone. For EXW/FOB/CIF, payout can
+  precede final delivery; title remains escrowed until delivery.
 
 ## 2. Objectives
 
 | ID | Objective | Success criterion |
 |----|-----------|-------------------|
-| **OBJ-1** | Document registry + e-B/L token | Each document type is anchored by its designated role; anchored CIDs are locked (never silently replaced); the title NFT transfers to the importer at the Incoterm-correct milestone. |
+| **OBJ-1** | Document registry + e-B/L token | Each document type is anchored by its designated role; anchored CIDs cannot be silently replaced; public title-token transfers are blocked and the token is released to the importer only at final delivery. |
 | **OBJ-2** | Role-based access control | Every privileged function reverts for accounts lacking the required role; an access-control matrix test passes. |
 | **OBJ-3** | Incoterm-aware tracking & settlement | EXW/FOB/CIF/DDP settle at the correct risk-transfer milestone; DDP blocks until clearance + duty; the required-document set is validated per Incoterm. |
 | **OBJ-4** | Deploy, test & verify on Sepolia | Six contracts **deployed and verified** on Etherscan (see [§7](#7-sepolia-deployment-verified)); ≥ 90 % branch coverage; 0 High Slither findings; positive/negative/boundary tests passing. |
@@ -68,7 +69,7 @@ forgery. TradeChain removes the trusted intermediary for the *verification and s
 |---|-----------|------|----------------|
 | 1 | `TradeChainCore` | concrete (coordinator) | `AccessControl` role authority + single user entry point; deploys/wires the companions; holds the modules' own access control; owns the swappable `DocumentRegistry`; orchestrates documents, milestones, settlement. |
 | 2 | `LetterOfCredit` | module | L/C state machine: funding, `TradeUSD` escrow, customs duty, atomic payout, expiry refund (reclaim). |
-| 3 | `ShipmentTracker` | module + ERC-721 | Orders + shipment records, lifecycle `Phase`, milestone timestamps, risk holder **and the e-B/L document-of-title token** (`tokenId == shipmentId`, milestone-gated transfer). |
+| 3 | `ShipmentTracker` | module + ERC-721 | Orders + shipment records, lifecycle `Phase`, milestone timestamps, risk holder and e-B/L title token (`tokenId == shipmentId`); only the core releases title at final delivery. |
 | 4 | `ComplianceEngine` | view module | Incoterm-aware required-document rules and validation; resolves the registry that holds each anchor. |
 | 5 | `DocumentRegistry` | module | Per-`(shipment, DocType)` CID anchors, verification status, anchor-once-then-lock; **swappable** by the admin or `ROLE_REGISTRY_ADMIN`. |
 | 6 | `TradeUSD` | ERC-20 | Settlement stablecoin with **role-gated** minting. |
@@ -162,6 +163,7 @@ that actually holds each anchor through the core, and in-flight shipments keep s
 ```
 
 - `Settled` = payout complete **and** title transferred.
+- **Title and payment timing are distinct:** payout/risk transfer follows the Incoterm table below, but the title NFT is transferred to the importer only at `confirmFinalDelivery` (or bank `forceFinalizeDelivery`). For EXW/FOB/CIF, the L/C may already have paid before title is released; the phase becomes `Settled` after delivery.
 - `Reclaimed` is terminal: the importer's escrow is returned because the exporter never shipped.
 - `riskHolder` starts at the exporter and moves to the importer at each Incoterm's risk-transfer
   milestone: **EXW** at `confirmPickup`, **FOB/CIF** at `confirmVesselLoading`, **DDP** at
@@ -227,6 +229,7 @@ Bank       forceFinalizeDelivery(id)                             → if the impo
 ├── ui/                                 # single-file HTML/JS console (no build step)
 │   └── index.html                      # lifecycle stepper, flow guide, all workflow/admin actions
 ├── docs/
+│   ├── FRONTENDS.md                    # MetaMask setup, account/network behavior, troubleshooting
 │   ├── ARCHITECTURE.md · DESIGN_DECISIONS.md · SECURITY.md
 │   ├── IPFS_CONSORTIUM.md              # per-role nodes, upload/retrieve flow
 │   ├── REFACTOR_PLAN.md                # 6-contract restructure plan
@@ -298,8 +301,11 @@ npx hardhat run scripts/deploy.js --network localhost         # copy the core ad
 cd dapp && npm install && npm run dev                         # terminal 2 → http://localhost:5173
 ```
 
-Paste the core address, choose a role account, and walk the numbered panels. See
-[`dapp/README.md`](./dapp/README.md).
+Paste the `TradeChainCore` address and click **Connect MetaMask / Load**. MetaMask prompts for
+account access; select an account that has the role required for the action, and confirm the network
+matches the deployment. The app listens for account/network changes. If MetaMask is unavailable, the
+configured JSON-RPC endpoint is used (Hardhat exposes unlocked local accounts; other endpoints are
+normally read-only). See [`dapp/README.md`](./dapp/README.md) and the [frontend guide](./docs/FRONTENDS.md).
 
 ### Plain HTML console (`ui/`) — no build step
 
@@ -315,8 +321,11 @@ python -m http.server 8090                              # terminal 2  (or: npx s
 # open http://127.0.0.1:8090/ui/index.html
 ```
 
-- Opens pre-set to the verified Sepolia deployment and works **read-only** without a wallet;
-  connect MetaMask (or paste a test-only key for a local node) to send transactions.
+- Opens pre-set to the verified Sepolia deployment without opening a wallet permission prompt. It
+  uses a previously authorized MetaMask account if one exists; otherwise it is read-only. Click
+  **Connect wallet** to authorize MetaMask for transactions (or use
+  the test-only in-memory key only with a local Hardhat node). Account and network changes are
+  reflected by the console.
 - `ethers` is vendored locally (`ui/ethers.umd.min.js`), so it also works offline.
 - Transactions are queued, so clicking two actions in quick succession cannot race on the nonce.
 
@@ -351,7 +360,9 @@ source is published on Etherscan (append `#code` to each address).
 | `LetterOfCredit` | [`0xdC6Ee51c61226CC0E42C76921e94C011196A0650`](https://sepolia.etherscan.io/address/0xdC6Ee51c61226CC0E42C76921e94C011196A0650#code) |
 | `TradeUSD` (ERC-20) | [`0x2C262BE7C837E0236FC0346Ad70d6e86ECCb445d`](https://sepolia.etherscan.io/address/0x2C262BE7C837E0236FC0346Ad70d6e86ECCb445d#code) |
 
-Deployer: `0xCE4b0826b1B5d4bEA67EED5212Ae0AA5ec6c8664`.
+Deployer: `0xCE4b0826b1B5d4bEA67EED5212Ae0AA5ec6c8664`. In this demo deployment, the five
+operational roles initially point to the deployer address; the admin can assign distinct wallets with
+`grantRoles`.
 
 Creation transactions: `TradeUSD` `0x513ec4fc6d3cae33aa88b022dc31f087937c92cef53f62b3849c6b1209fc4509`
 (block 12186124) and `TradeChainCore` `0x034ee59f424030c31e8d38f4c4ed41b94b9979f351b169fb2dfa62581851d4d3`
@@ -401,7 +412,7 @@ cd dapp && npm install && npm run dev     # http://localhost:5173
 python -m http.server 8090                # → http://127.0.0.1:8090/ui/index.html
 ```
 
-- [ ] Paste the local `TradeChainCore` address → **Connect / Load**
+- [ ] Paste the local `TradeChainCore` address → **Connect MetaMask / Load** (or connect to local RPC)
 - [ ] Panel 1 → `createOrder` then `createShipment`
 - [ ] Panel 2 → `openLetterOfCredit`, anchor certificates, upload a file (CID fills in)
 - [ ] Panel 3 → milestones; **Shipment viewer** shows phase + document flags
@@ -443,7 +454,7 @@ npx hardhat run scripts/verify.js --network sepolia
 |------|---------------------------|------------|------------|
 | **Documentary fraud** | Payout without a mandatory document; CID replaced after funding | Per-milestone `requireCompliant`; `DocumentRegistry` anchor-once-then-lock | Negative tests assert `MissingMandatoryDocument` / `DocumentLocked` |
 | **Unauthorized attestation** | Exporter self-signs a certificate | Certificates anchor only through the per-`DocType` role check | Access-control matrix test |
-| **Unauthorized title transfer** | Holder endorses/moves the e-B/L before settlement | `ShipmentTracker._update` rejects every public ERC-721 transfer; only the core can `transferTitle` | `Tokens.test.js` (public `transferFrom` reverts) |
+| **Unauthorized title transfer** | Holder endorses/moves the e-B/L before final delivery | `ShipmentTracker._update` rejects every public ERC-721 transfer; only the core can `transferTitle` | `Tokens.test.js` (public `transferFrom` reverts) |
 | **Reentrancy** | Malicious ERC-20 callback / ERC-721 receiver hook re-enters settlement | `nonReentrant` on `LetterOfCredit.settle`/`refund` + strict CEI + `SafeERC20` | `Reentrancy.test.js` (adversarial token pays out exactly once) |
 | **Settlement stall** | Importer withholds delivery; exporter never ships | Deadline reclaim (importer/bank/admin); either **bank** can `forceFinalizeDelivery` | `Neutrality.test.js` |
 | **Revoked attestation** | Verifier revokes a relied-upon certificate | `DocumentRegistry.revoke` clears `verified`; checked at compliance time | `DocumentRegistry` revocation tests |

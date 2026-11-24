@@ -1,8 +1,8 @@
 # TradeChain — Refactor Plan (align with the updated proposal)
 
-Owner: YUNG HOI KI (21232072) · Status: **implemented** · Last updated: 2026-11-05
+Owner: YUNG HOI KI (21232072) · Status: **implemented** · Last updated: 2026-11-24
 
-The updated proposal (`CSIT5760_Project_Proposal_21232072.docx`) specifies a modular suite, a
+The submitted proposal ([`CSIT5760_Project_Proposal_21232072.pdf`](../CSIT5760_Project_Proposal_21232072.pdf)) specifies a modular suite, a
 **React (Vite)** front end and IPFS document storage. This document tracks the restructure from the
 previous composition-root design to the current layout, and records the later decision to merge the
 title token into the shipment aggregate.
@@ -23,9 +23,10 @@ deployed).
 
 ## Design decisions
 
-- **Central authority, thin modules.** `TradeChainCore` owns `AccessControl`; every other contract
-  only accepts calls from the core (`onlyCore`) and exposes public views. This keeps the DApp at a
-  single address while deploying six distinct contracts.
+- **Central authority, thin modules.** `TradeChainCore` owns the user-facing `AccessControl`; companion
+  contracts gate state changes with module `CONTROLLER_ROLE`s held by the core. The core administers
+  those module roles with `setModuleRole`, while modules expose public views. This keeps the DApp at
+  one entry-point address while deploying six distinct contracts.
 - **Escrow in `LetterOfCredit`.** The importer approves the **core**, which moves `TradeUSD` into the
   `LetterOfCredit` escrow (matches the proposal).
 - **No certificate NFT.** Verifier attestations are recorded as `DocRecord.verified` in
@@ -38,15 +39,15 @@ deployed).
   `DocType`s are the universe).
 - **Merged title token.** `ShipmentTracker` is the shipment aggregate *and* the ERC-721 document of
   title. `tokenId == shipmentId`; the token is minted to the core, its URI is set when the B/L/AWB is
-  anchored, and it is transferred to the importer at the settlement milestone. `_update` rejects
-  every externally initiated ERC-721 transfer, so the title cannot bypass the milestone gate.
+  anchored, and it is transferred to the importer only at final delivery. `_update` rejects every
+  externally initiated ERC-721 transfer. Payout/risk transfer follows the Incoterm and can occur earlier.
 
 ## Phases — status
 
 1. ✅ Contracts restructured; compiles clean (6 deployed + 1 library).
 2. ✅ Hardhat suite (97 tests) → 100 % statements / **93.88 % branches** / 100 % functions / 100 % lines.
 3. ✅ `scripts/` updated (`deploy`, `seed-demo`, `verify`, `ipfs-add`/`ipfs-pin` for per-role nodes).
-4. ✅ React (Vite) + ethers v6 + MetaMask DApp in `dapp/` (builds via `npm run build`).
+4. ✅ React (Vite) + ethers v6 + MetaMask dashboard in `dapp/`; no-build HTML/JS console in `ui/`.
 5. ✅ `README.md`, `docs/*`, `docs/PROPOSAL_UPDATES.md`, CI and `.gitignore` updated.
 
 ## Post-review adjustments (per the author's feedback)

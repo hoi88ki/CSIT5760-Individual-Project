@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { BrowserProvider, JsonRpcProvider, Contract, MaxUint256, isAddress, parseUnits, formatUnits } from "ethers";
 import { CORE_ABI, ERC20_ABI, INCOTERMS, PHASES, DOC_TYPES } from "./abi.js";
 import { uploadFile, fetchFromKubo } from "./ipfs.js";
@@ -28,37 +28,70 @@ export default function App() {
   async function connect() {
     try {
       let p;
+      let list;
       if (window.ethereum) {
         p = new BrowserProvider(window.ethereum);
-        await p.send("eth_requestAccounts", []);
+        list = await p.send("eth_requestAccounts", []);
       } else {
         p = new JsonRpcProvider(rpc);
+        list = (await p.listAccounts()).map((a) => (typeof a === "string" ? a : a.address));
       }
-      const list = (await p.listAccounts()).map((a) => (typeof a === "string" ? a : a.address));
+      const selected = list[0] || "";
       setProvider(p);
       setAccounts(list);
-      setAccount(list[0] || "");
+      setAccount(selected);
       const net = await p.getNetwork();
-      setStatus(`Connected · chain ${net.chainId} · ${list.length} accounts`);
-      append(`Connected on chain ${net.chainId}`);
-      if (coreAddr && isAddress(coreAddr)) await loadCore(p, coreAddr);
+      setStatus(`${window.ethereum ? "MetaMask" : "RPC"} · chain ${net.chainId} · ${selected || "read-only"}`);
+      append(`Connected on chain ${net.chainId}${selected ? ` as ${selected}` : " (read-only)"}`);
+      if (coreAddr && isAddress(coreAddr)) await loadCore(p, coreAddr, selected);
     } catch (err) {
       append(`connect ✘ ${err.shortMessage || err.message}`);
     }
   }
 
-  async function loadCore(p = provider, addr = coreAddr) {
+  useEffect(() => {
+    const wallet = window.ethereum;
+    if (!wallet?.on) return undefined;
+
+    const reloadWallet = async (changedAccounts) => {
+      try {
+        const p = new BrowserProvider(wallet);
+        const list = changedAccounts || (await p.send("eth_accounts", []));
+        const selected = list[0] || "";
+        const net = await p.getNetwork();
+        setProvider(p);
+        setAccounts(list);
+        setAccount(selected);
+        setStatus(`${selected ? "MetaMask" : "Wallet disconnected"} · chain ${net.chainId}${selected ? ` · ${selected}` : " · read-only"}`);
+        if (coreAddr && isAddress(coreAddr)) await loadCore(p, coreAddr, selected);
+      } catch (err) {
+        append(`wallet update ✘ ${err.shortMessage || err.message}`);
+      }
+    };
+    const onAccountsChanged = (nextAccounts) => reloadWallet(nextAccounts);
+    const onChainChanged = () => reloadWallet();
+    wallet.on("accountsChanged", onAccountsChanged);
+    wallet.on("chainChanged", onChainChanged);
+    return () => {
+      wallet.removeListener?.("accountsChanged", onAccountsChanged);
+      wallet.removeListener?.("chainChanged", onChainChanged);
+    };
+  }, [coreAddr]);
+
+  async function loadCore(p = provider, addr = coreAddr, activeAccount = account) {
     if (!p) return append("connect a wallet first");
     if (!isAddress(addr)) return alert("Enter a valid TradeChainCore address.");
     localStorage.setItem("tradechain.core", addr);
     const c = new Contract(addr, CORE_ABI, p);
     setCore(c);
-    setStatus(`Core ${addr.slice(0, 6)}…${addr.slice(-4)}`);
+    const net = await p.getNetwork();
+    const walletLabel = activeAccount ? `${activeAccount.slice(0, 6)}…${activeAccount.slice(-4)}` : "Read-only";
+    setStatus(`${walletLabel} · chain ${net.chainId} · core ${addr.slice(0, 6)}…${addr.slice(-4)}`);
     append(`Loaded core ${addr}`);
   }
 
   function signer() {
-    if (!provider) throw new Error("Connect first.");
+    if (!provider || !account) throw new Error("Connect a wallet account first.");
     return provider.getSigner(account);
   }
 
@@ -149,7 +182,7 @@ export default function App() {
           <h2>Connection</h2>
           <label>TradeChainCore address</label>
           <input value={coreAddr} onChange={(e) => setCoreAddr(e.target.value)} placeholder="0x…" />
-          <button onClick={connect}>Connect / Load</button>
+          <button onClick={connect}>Connect MetaMask / Load</button>
           <label>Active account</label>
           <select value={account} onChange={(e) => setAccount(e.target.value)}>
             {accounts.map((a) => (
@@ -159,8 +192,10 @@ export default function App() {
             ))}
           </select>
           <p className="hint">
-            Local demo: <code>npx hardhat node</code> then <code>npx hardhat run scripts/deploy.js --network localhost</code>,
-            paste the core address. MetaMask is used automatically when present.
+            MetaMask: unlock it, select the intended account and network, then connect above. Without MetaMask,
+            the dashboard uses the configured JSON-RPC endpoint (Hardhat exposes unlocked test accounts;
+            other RPC endpoints are normally read-only). Local demo: run <code>npx hardhat node</code>,
+            deploy to localhost, then paste the core address.
           </p>
         </section>
 
