@@ -17,9 +17,13 @@ interface IDocumentDirectory {
 }
 
 /// @title ComplianceEngine — Incoterm-aware document compliance rules
-/// @notice View-only rule engine. The seven `DocType`s are the *universe*; the actual mandatory set
-///         is a function of the Incoterm and the milestone (e.g. CIF needs insurance, DDP needs
-///         customs clearance, EXW/FOB do not need insurance).
+/// @notice View-only rule engine. The seven `DocType`s are the *universe*; the actual mandatory
+///         set is a function of the Incoterm and of the checkpoint being proved. Two kinds of
+///         checkpoints exist:
+///           • **Custody gates** — the progressive documentary readiness of the goods
+///             (pickup → loading → delivery).
+///           • **The presentation** — the stipulated documentary set of the credit, examined
+///             by the issuing bank before honoring (the same full set per Incoterm).
 /// @dev    Access control is mounted on the `TradeChainCore` (the core holds `DEFAULT_ADMIN_ROLE`),
 ///         so the rule engine's authority is administered from one place. Every function is a
 ///         `view` and stays permissionless by design — the engine only reads the registries and
@@ -52,15 +56,15 @@ contract ComplianceEngine is AccessControl {
         return DocumentRegistry(resolved == address(0) ? address(registry) : resolved);
     }
 
-    /// @dev Mandatory document bitmask for a given Incoterm + phase.
-    function requiredMask(TradeTypes.Incoterm term, TradeTypes.Phase phase) public pure returns (uint8 mask) {
+    /// @dev Mandatory document bitmask for a given Incoterm + custody checkpoint.
+    function requiredMask(TradeTypes.Incoterm term, TradeTypes.Custody custody) public pure returns (uint8 mask) {
         uint8 base = TradeTypes.bit(TradeTypes.DocType.CommercialInvoice) |
             TradeTypes.bit(TradeTypes.DocType.PackingList);
 
-        if (phase == TradeTypes.Phase.PickedUp) {
+        if (custody == TradeTypes.Custody.PickedUp) {
             return base;
         }
-        if (phase == TradeTypes.Phase.LoadedOnVessel) {
+        if (custody == TradeTypes.Custody.OnVessel) {
             if (term == TradeTypes.Incoterm.EXW) {
                 return base | TradeTypes.bit(TradeTypes.DocType.BillOfLadingOrAWB);
             }
@@ -76,7 +80,7 @@ contract ComplianceEngine is AccessControl {
                 TradeTypes.bit(TradeTypes.DocType.InspectionCertificate) |
                 TradeTypes.bit(TradeTypes.DocType.BillOfLadingOrAWB); // FOB, DDP
         }
-        if (phase == TradeTypes.Phase.Delivered) {
+        if (custody == TradeTypes.Custody.Delivered) {
             if (term == TradeTypes.Incoterm.DDP) {
                 return
                     base |
@@ -100,23 +104,17 @@ contract ComplianceEngine is AccessControl {
             }
             return base | TradeTypes.bit(TradeTypes.DocType.BillOfLadingOrAWB); // EXW
         }
-        return 0;
+        return 0; // AtExporter: nothing is gate-checked before pickup
     }
 
-    /// @notice Milestone at which risk (and therefore payment) transfers for each Incoterm.
-    function payoutPhase(TradeTypes.Incoterm term) public pure returns (TradeTypes.Phase) {
-        if (term == TradeTypes.Incoterm.EXW) return TradeTypes.Phase.PickedUp;
-        if (term == TradeTypes.Incoterm.DDP) return TradeTypes.Phase.Delivered;
-        return TradeTypes.Phase.LoadedOnVessel; // FOB, CIF
+    /// @notice The stipulated documentary set of the credit for an Incoterm — the documents the
+    ///         beneficiary must present and the issuing bank must examine before honoring.
+    function presentationMask(TradeTypes.Incoterm term) public pure returns (uint8) {
+        return requiredMask(term, TradeTypes.Custody.Delivered);
     }
 
-    /// @notice Returns the first required document that is missing or revoked, if any.
-    function firstMissing(
-        uint256 id,
-        TradeTypes.Incoterm term,
-        TradeTypes.Phase phase
-    ) public view returns (bool ok, TradeTypes.DocType missing) {
-        uint8 mask = requiredMask(term, phase);
+    /// @notice Returns the first document of `mask` that is missing or revoked, if any.
+    function _firstMissing(uint256 id, uint8 mask) internal view returns (bool ok, TradeTypes.DocType missing) {
         for (uint8 i = 0; i < TradeTypes.DOC_TYPE_COUNT; ++i) {
             if ((mask & (uint8(1) << i)) != 0) {
                 TradeTypes.DocType d = TradeTypes.DocType(i);
@@ -126,21 +124,64 @@ contract ComplianceEngine is AccessControl {
         return (true, TradeTypes.DocType.CommercialInvoice);
     }
 
-    function isCompliant(uint256 id, TradeTypes.Incoterm term, TradeTypes.Phase phase) external view returns (bool) {
-        (bool ok, ) = firstMissing(id, term, phase);
+    /// @notice Returns the first custody-gate document that is missing or revoked, if any.
+    function firstMissing(
+        uint256 id,
+        TradeTypes.Incoterm term,
+        TradeTypes.Custody custody
+    ) public view returns (bool ok, TradeTypes.DocType missing) {
+        return _firstMissing(id, requiredMask(term, custody));
+    }
+
+    /// @notice Returns the first stipulated presentation document that is missing or revoked.
+    function firstMissingPresentation(
+        uint256 id,
+        TradeTypes.Incoterm term
+    ) public view returns (bool ok, TradeTypes.DocType missing) {
+        return _firstMissing(id, presentationMask(term));
+    }
+
+    function isCompliant(
+        uint256 id,
+        TradeTypes.Incoterm term,
+        TradeTypes.Custody custody
+    ) external view returns (bool) {
+        (bool ok, ) = firstMissing(id, term, custody);
         return ok;
     }
 
-    /// @notice Reverts with `MissingMandatoryDocument` if the set for `phase` is incomplete.
-    function requireCompliant(uint256 id, TradeTypes.Incoterm term, TradeTypes.Phase phase) external view {
-        (bool ok, TradeTypes.DocType missing) = firstMissing(id, term, phase);
+    function isPresentationCompliant(uint256 id, TradeTypes.Incoterm term) external view returns (bool) {
+        (bool ok, ) = firstMissingPresentation(id, term);
+        return ok;
+    }
+
+    /// @notice Reverts with `MissingMandatoryDocument` if the custody-gate set is incomplete.
+    function requireCompliant(
+        uint256 id,
+        TradeTypes.Incoterm term,
+        TradeTypes.Custody custody
+    ) external view {
+        (bool ok, TradeTypes.DocType missing) = firstMissing(id, term, custody);
         if (!ok) revert MissingMandatoryDocument(id, missing);
     }
 
-    /// @notice Convenience: required mask for a shipment's current term.
-    function requiredForShipment(uint256 id, TradeTypes.Phase phase) external view returns (uint8) {
+    /// @notice Reverts with `MissingMandatoryDocument` if the stipulated presentation set is
+    ///         incomplete. Used when recording a presentation and when the bank examines it.
+    function requirePresentationCompliant(uint256 id, TradeTypes.Incoterm term) external view {
+        (bool ok, TradeTypes.DocType missing) = firstMissingPresentation(id, term);
+        if (!ok) revert MissingMandatoryDocument(id, missing);
+    }
+
+    /// @notice Convenience: custody-gate mask for a shipment's current Incoterm.
+    function requiredForShipment(uint256 id, TradeTypes.Custody custody) external view returns (uint8) {
         TradeTypes.Shipment memory s = tracker.getShipment(id);
-        return requiredMask(s.term, phase);
+        return requiredMask(s.term, custody);
+    }
+
+    /// @notice Convenience: stipulated presentation mask for a shipment's current Incoterm.
+    function presentationForShipment(uint256 id) external view returns (uint8) {
+        TradeTypes.Shipment memory s = tracker.getShipment(id);
+        return presentationMask(s.term);
     }
 
     function supportsInterface(bytes4 interfaceId) public view override(AccessControl) returns (bool) {

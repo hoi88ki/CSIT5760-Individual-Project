@@ -14,8 +14,11 @@ import {LetterOfCredit} from "./core/LetterOfCredit.sol";
 
 /// @title TradeChainCore — central coordinator and single user entry point
 /// @notice Owns the `AccessControl` role authority, deploys/wires the four companion contracts,
-///         receives the `TradeUSD` settlement token and orchestrates the full trade workflow
-///         (orders, documents, milestones, settlement).
+///         receives the `TradeUSD` settlement token and orchestrates the full documentary-credit
+///         workflow: the importer applies for a credit, the **issuing bank issues and prefunds**
+///         it, the beneficiary ships, **presents** the stipulated documents, the bank **examines
+///         and honors** the presentation (sight or deferred), and custody/title follow the
+///         Incoterm independently of payment.
 /// @dev    The access control of the companion modules (`DocumentRegistry`, `LetterOfCredit`,
 ///         `ComplianceEngine`) is mounted here: each module grants its `DEFAULT_ADMIN_ROLE` and
 ///         `CONTROLLER_ROLE` to this core at construction, so the modules' writers and their role
@@ -51,8 +54,8 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
     ComplianceEngine public immutable complianceEngine;
     LetterOfCredit public immutable letterOfCredit;
 
-    /// @notice Registry that holds each `(shipment, DocType)` anchor, snapshotted at anchor time so
-    ///         that replacing the active registry never orphans documents of in-flight shipments.
+    /// @notice Registry that holds each `(trade, DocType)` anchor, snapshotted at anchor time so
+    ///         that replacing the active registry never orphans documents of in-flight trades.
     mapping(uint256 id => mapping(TradeTypes.DocType docType => address registry)) private _docRegistryOf;
 
     /// @notice Runtime codehash of the deployment-time registry. A replacement registry must match
@@ -69,8 +72,11 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
     error ShipmentNotFound(uint256 id);
     error InvalidState(uint256 id, TradeTypes.Phase expected, TradeTypes.Phase actual);
     error InvalidStateRange(uint256 id, TradeTypes.Phase actual);
+    error InvalidCustody(uint256 id, TradeTypes.Custody expected, TradeTypes.Custody actual);
     error DocumentNotAnchorable(TradeTypes.DocType docType);
+    error NotBeneficiary(uint256 id, address caller);
     error NotReclaimAuthority(address caller);
+    error CreditExpired(uint256 id, uint64 deadline);
     error ArrayLengthMismatch();
     error NotTokenAdmin();
     error LCAlreadySettled(uint256 id);
@@ -89,8 +95,19 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
         address indexed importer,
         address indexed exporter,
         TradeTypes.Incoterm term,
+        TradeTypes.PaymentTerm paymentTerm,
+        uint64 deferredDays,
         uint256 lcAmount,
         uint64 deadline
+    );
+    event LetterOfCreditIssued(
+        uint256 indexed orderId,
+        address indexed issuingBank,
+        address indexed beneficiary,
+        uint256 amount,
+        TradeTypes.PaymentTerm paymentTerm,
+        uint64 deferredDays,
+        uint8 requiredDocs
     );
     event ShipmentCreated(
         uint256 indexed id,
@@ -101,17 +118,12 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
         uint256 lcAmount,
         uint64 deadline
     );
-    event LetterOfCreditOpened(uint256 indexed id, address indexed importer, uint256 amount);
-    event MilestoneReached(uint256 indexed id, TradeTypes.Phase phase, address indexed actor);
-    event AtomicLCPayoutExecuted(
-        uint256 indexed id,
-        address indexed exporter,
-        uint256 amount,
-        TradeTypes.Phase atPhase
-    );
+    event DocumentsPresented(uint256 indexed id, address indexed beneficiary);
+    event MilestoneReached(uint256 indexed id, TradeTypes.Custody custody, address indexed actor);
+    event AtomicLCPayoutExecuted(uint256 indexed id, address indexed beneficiary, uint256 amount);
     event DutyPaid(uint256 indexed id, address indexed payer, uint256 amount);
     event TitleTransferred(uint256 indexed id, address indexed from, address indexed to);
-    event LCReclaimed(uint256 indexed id, address indexed importer, uint256 lcRefund, uint256 dutyRefund);
+    event LCReclaimed(uint256 indexed id, address indexed issuingBank, uint256 lcRefund, uint256 dutyRefund);
     event DeliveryForceFinalized(uint256 indexed id, address indexed bank);
     event TreasuryUpdated(address indexed treasury);
     event DocumentRegistryReplaced(address indexed oldRegistry, address indexed newRegistry);
@@ -172,7 +184,7 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
     ///         deployment-time registry, so only a genuine `DocumentRegistry` (whose only writer
     ///         is this core) can be swapped in and `isValid` cannot be forged for compliance.
     ///         Documents already anchored stay in their registry: the core snapshots the registry
-    ///         per `(shipment, DocType)`, so in-flight shipments keep resolving correctly.
+    ///         per `(trade, DocType)`, so in-flight trades keep resolving correctly.
     function setDocumentRegistry(address newRegistry) external {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender) && !hasRole(ROLE_REGISTRY_ADMIN, msg.sender)) {
             revert Unauthorized(msg.sender);
@@ -215,112 +227,219 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
     }
 
     // ---------------------------------------------------------------------
-    // Order -> Shipment -> L/C
+    // Application → issuance → shipment → presentation
     // ---------------------------------------------------------------------
 
-    /// @notice Importer opens a purchase order for a named exporter.
+    /// @notice The importer (L/C applicant) opens a purchase order naming the beneficiary and
+    ///         the requested payment terms (sight, or deferred with a deferral in days). The
+    ///         trade record is opened in phase `OrderPlaced`; nothing is funded yet.
     function createOrder(
         address exporter,
         TradeTypes.Incoterm term,
         uint256 lcAmount,
-        uint64 deadline
+        uint64 deadline,
+        TradeTypes.PaymentTerm paymentTerm,
+        uint64 deferredDays
     ) external onlyRole(ROLE_IMPORTER) returns (uint256 orderId) {
-        orderId = shipmentTracker.createOrder(msg.sender, exporter, term, lcAmount, deadline);
-        emit OrderCreated(orderId, msg.sender, exporter, term, lcAmount, deadline);
+        orderId = shipmentTracker.createOrder(
+            msg.sender,
+            exporter,
+            term,
+            paymentTerm,
+            deferredDays,
+            lcAmount,
+            deadline
+        );
+        emit OrderCreated(orderId, msg.sender, exporter, term, paymentTerm, deferredDays, lcAmount, deadline);
     }
 
-    /// @notice The ordered exporter accepts the order, anchoring invoice + packing list.
+    /// @notice The issuing bank issues the credit against the application and prefunds the
+    ///         escrow: `order.lcAmount` of `TradeUSD` is pulled from the bank into the
+    ///         `LetterOfCredit`. The stipulated documentary set is recorded from the
+    ///         `ComplianceEngine`. Only after this may the named exporter ship.
+    /// @dev    The trade record mirrors every application field, so the shipment struct carries
+    ///         the issued terms (`orderId == shipmentId`).
+    function issueLetterOfCredit(uint256 orderId) external onlyRole(ROLE_BANK) {
+        TradeTypes.Shipment memory s = _requireShipment(orderId);
+        if (s.phase != TradeTypes.Phase.OrderPlaced) {
+            revert InvalidState(orderId, TradeTypes.Phase.OrderPlaced, s.phase);
+        }
+        if (block.timestamp >= s.deadline) revert CreditExpired(orderId, s.deadline);
+
+        uint8 requiredDocs = complianceEngine.presentationMask(s.term);
+        settlementToken.safeTransferFrom(msg.sender, address(letterOfCredit), s.lcAmount);
+        letterOfCredit.issue(
+            orderId,
+            msg.sender,
+            s.exporter,
+            s.lcAmount,
+            s.paymentTerm,
+            s.deferredDays,
+            requiredDocs
+        );
+        shipmentTracker.setPhase(orderId, TradeTypes.Phase.LCIssued);
+
+        emit LetterOfCreditIssued(
+            orderId,
+            msg.sender,
+            s.exporter,
+            s.lcAmount,
+            s.paymentTerm,
+            s.deferredDays,
+            requiredDocs
+        );
+    }
+
+    /// @notice The **named** exporter ships against the issued credit, anchoring the invoice and
+    ///         packing list and escrowing the title token. Reverts until the bank has issued an
+    ///         operative credit and after the credit's expiry.
     function createShipment(
         uint256 orderId,
         string calldata invoiceCID,
         string calldata packingListCID
     ) external onlyRole(ROLE_EXPORTER) returns (uint256 id) {
-        id = shipmentTracker.fulfilOrder(orderId, msg.sender);
+        TradeTypes.Shipment memory s = _requireShipment(orderId);
+        if (s.exporter != msg.sender) revert NotBeneficiary(orderId, msg.sender);
+        if (s.phase != TradeTypes.Phase.LCIssued) {
+            revert InvalidState(orderId, TradeTypes.Phase.LCIssued, s.phase);
+        }
+
+        id = orderId; // the order and its trade record share one id
+        shipmentTracker.ship(orderId, msg.sender);
         _anchor(id, TradeTypes.DocType.CommercialInvoice, invoiceCID, msg.sender);
         _anchor(id, TradeTypes.DocType.PackingList, packingListCID, msg.sender);
         shipmentTracker.mint(address(this), id, "");
 
-        TradeTypes.Shipment memory s = shipmentTracker.getShipment(id);
         emit ShipmentCreated(id, orderId, msg.sender, s.importer, s.term, s.lcAmount, s.deadline);
     }
 
-    /// @notice Importer escrows the L/C amount in `TradeUSD` (approve this core first).
-    function openLetterOfCredit(uint256 id) external onlyRole(ROLE_IMPORTER) {
+    /// @notice The beneficiary records the presentation of the stipulated documents for the
+    ///         trade. The presentation set must be complete and verified at this point, and the
+    ///         credit must not have expired; the bank re-examines before honoring.
+    function presentDocuments(uint256 id) external onlyRole(ROLE_EXPORTER) {
         TradeTypes.Shipment memory s = _requireShipment(id);
-        if (s.importer != msg.sender) revert Unauthorized(msg.sender);
-        if (s.phase != TradeTypes.Phase.Created) revert InvalidState(id, TradeTypes.Phase.Created, s.phase);
+        if (s.exporter != msg.sender) revert NotBeneficiary(id, msg.sender);
+        if (s.phase != TradeTypes.Phase.Shipped) revert InvalidState(id, TradeTypes.Phase.Shipped, s.phase);
+        if (block.timestamp > s.deadline) revert CreditExpired(id, s.deadline);
 
-        settlementToken.safeTransferFrom(msg.sender, address(letterOfCredit), s.lcAmount);
-        letterOfCredit.fund(id, msg.sender, s.lcAmount);
-        shipmentTracker.setPhase(id, TradeTypes.Phase.LCFunded);
+        complianceEngine.requirePresentationCompliant(id, s.term);
+        letterOfCredit.recordPresentation(id);
+        shipmentTracker.setPhase(id, TradeTypes.Phase.Presented);
 
-        emit LetterOfCreditOpened(id, msg.sender, s.lcAmount);
+        emit DocumentsPresented(id, msg.sender);
+    }
+
+    /// @notice The issuing bank examines the presentation against the credit's stipulated
+    ///         documentary set (and the on-chain CID/verification state) and honors a complying
+    ///         presentation: at sight the proceeds are paid immediately; with deferred terms the
+    ///         payment is scheduled for `honoredAt + deferredDays` and released by
+    ///         `drawDeferredPayment` at maturity.
+    function honorPresentation(uint256 id) external onlyRole(ROLE_BANK) {
+        TradeTypes.Shipment memory s = _requireActive(id);
+        // Delivery may complete while the documents are under examination; the credit itself
+        // must have been presented (recorded by `presentDocuments`) and not yet honored.
+        if (!letterOfCredit.isPresented(id)) revert InvalidState(id, TradeTypes.Phase.Presented, s.phase);
+
+        bool paidNow = letterOfCredit.honor(id, s.exporter);
+        if (paidNow) {
+            // Sight: proceeds leave the escrow inside the module's reentrancy guard.
+            emit AtomicLCPayoutExecuted(id, s.exporter, s.lcAmount);
+        }
+
+        shipmentTracker.setPhase(
+            id,
+            s.custody == TradeTypes.Custody.Delivered
+                ? TradeTypes.Phase.Settled
+                : TradeTypes.Phase.Honored
+        );
+    }
+
+    /// @notice Releases the proceeds of an honored deferred credit at maturity. Permissionless
+    ///         after maturity: the bank's undertaking is deterministic and no party can stall it.
+    function drawDeferredPayment(uint256 id) external {
+        TradeTypes.Shipment memory s = _requireShipment(id);
+        if (
+            s.phase != TradeTypes.Phase.Honored && s.phase != TradeTypes.Phase.Delivered
+        ) revert InvalidState(id, TradeTypes.Phase.Honored, s.phase);
+
+        letterOfCredit.drawDeferred(id, s.exporter);
+        emit AtomicLCPayoutExecuted(id, s.exporter, s.lcAmount);
+
+        if (s.custody == TradeTypes.Custody.Delivered) {
+            shipmentTracker.setPhase(id, TradeTypes.Phase.Settled);
+        }
     }
 
     /// @notice Anchors a certificate of origin (exporter) or a verifier-attested document.
+    ///         Certificates may only be anchored once the goods are shipped against the credit.
     function anchorDocument(uint256 id, TradeTypes.DocType docType, string calldata cid) external {
         TradeTypes.Shipment memory s = _requireShipment(id);
         bytes32 role = _roleForDocType(docType);
         if (!hasRole(role, msg.sender)) revert Unauthorized(msg.sender);
-        if (uint8(s.phase) < uint8(TradeTypes.Phase.LCFunded) || s.phase == TradeTypes.Phase.Reclaimed) {
+        if (uint8(s.phase) < uint8(TradeTypes.Phase.Shipped) || s.phase == TradeTypes.Phase.Reclaimed) {
             revert InvalidStateRange(id, s.phase);
         }
         _anchor(id, docType, cid, msg.sender);
     }
 
     // ---------------------------------------------------------------------
-    // Custody milestones
+    // Custody milestones (payment does NOT follow these)
     // ---------------------------------------------------------------------
 
-    /// @notice Logistics confirms pickup. Under EXW risk moves to the importer and the L/C pays out.
+    /// @notice Logistics confirms pickup: goods leave the exporter. Under EXW risk moves to the
+    ///         importer. No payment is triggered — the credit pays on honor.
     function confirmPickup(uint256 id) external onlyRole(ROLE_LOGISTICS) {
         TradeTypes.Shipment memory s = _requireActive(id);
-        if (s.phase != TradeTypes.Phase.LCFunded) revert InvalidState(id, TradeTypes.Phase.LCFunded, s.phase);
+        if (s.phase != TradeTypes.Phase.Shipped) revert InvalidState(id, TradeTypes.Phase.Shipped, s.phase);
+        if (s.custody != TradeTypes.Custody.AtExporter) {
+            revert InvalidCustody(id, TradeTypes.Custody.AtExporter, s.custody);
+        }
 
-        complianceEngine.requireCompliant(id, s.term, TradeTypes.Phase.PickedUp);
+        complianceEngine.requireCompliant(id, s.term, TradeTypes.Custody.PickedUp);
 
-        shipmentTracker.setPhase(id, TradeTypes.Phase.PickedUp);
+        shipmentTracker.setCustody(id, TradeTypes.Custody.PickedUp);
         // Risk passes to the importer at pickup under EXW only; FOB/CIF pass it on the vessel and
         // DDP at destination (see confirmVesselLoading / _finalizeDelivery).
         if (s.term == TradeTypes.Incoterm.EXW) {
             shipmentTracker.setRiskHolder(id, s.importer);
         }
-        emit MilestoneReached(id, TradeTypes.Phase.PickedUp, msg.sender);
-
-        if (s.term == TradeTypes.Incoterm.EXW) _triggerSettlement(id);
+        emit MilestoneReached(id, TradeTypes.Custody.PickedUp, msg.sender);
     }
 
     /// @notice Logistics confirms loading, anchors the B/L (or AWB) and sets the title URI.
-    ///         Under FOB/CIF risk moves to the importer and the L/C pays out here.
+    ///         Under FOB/CIF risk moves to the importer. No payment is triggered.
     function confirmVesselLoading(uint256 id, string calldata blCid) external onlyRole(ROLE_LOGISTICS) {
         TradeTypes.Shipment memory s = _requireActive(id);
-        if (s.phase != TradeTypes.Phase.PickedUp) revert InvalidState(id, TradeTypes.Phase.PickedUp, s.phase);
+        if (s.phase != TradeTypes.Phase.Shipped) revert InvalidState(id, TradeTypes.Phase.Shipped, s.phase);
+        if (s.custody != TradeTypes.Custody.PickedUp) {
+            revert InvalidCustody(id, TradeTypes.Custody.PickedUp, s.custody);
+        }
 
         _anchor(id, TradeTypes.DocType.BillOfLadingOrAWB, blCid, msg.sender);
         shipmentTracker.setTokenURI(id, string.concat("ipfs://", blCid));
-        complianceEngine.requireCompliant(id, s.term, TradeTypes.Phase.LoadedOnVessel);
+        complianceEngine.requireCompliant(id, s.term, TradeTypes.Custody.OnVessel);
 
-        shipmentTracker.setPhase(id, TradeTypes.Phase.LoadedOnVessel);
-        // FOB/CIF transfer risk on the vessel (the payout milestone); EXW already passed it at pickup.
+        shipmentTracker.setCustody(id, TradeTypes.Custody.OnVessel);
+        // FOB/CIF transfer risk on the vessel; EXW already passed it at pickup.
         if (s.term == TradeTypes.Incoterm.FOB || s.term == TradeTypes.Incoterm.CIF) {
             shipmentTracker.setRiskHolder(id, s.importer);
         }
-        emit MilestoneReached(id, TradeTypes.Phase.LoadedOnVessel, msg.sender);
-
-        if (s.term == TradeTypes.Incoterm.FOB || s.term == TradeTypes.Incoterm.CIF) _triggerSettlement(id);
+        emit MilestoneReached(id, TradeTypes.Custody.OnVessel, msg.sender);
     }
 
-    /// @notice Escrows customs duty (zero allowed for duty-free destinations).
+    /// @notice Escrows customs duty (zero allowed for duty-free destinations). DDP duty must be
+    ///         paid before the bank honors the credit.
     function payCustomsDuty(uint256 id, uint256 amount) external {
-        TradeTypes.Shipment memory s = _requireActive(id);
+        TradeTypes.Shipment memory s = _requireShipment(id);
         bytes32 role = (s.term == TradeTypes.Incoterm.DDP) ? ROLE_EXPORTER : ROLE_IMPORTER;
         if (!hasRole(role, msg.sender)) revert Unauthorized(msg.sender);
-        if (uint8(s.phase) < uint8(TradeTypes.Phase.LCFunded) || uint8(s.phase) > uint8(TradeTypes.Phase.Delivered)) {
-            revert InvalidStateRange(id, s.phase);
-        }
-        // Duty is forwarded to the treasury only inside `LetterOfCredit.settle`. Once the L/C has been
-        // paid (EXW at pickup, FOB/CIF at loading), escrowing duty here would lock it forever, so it
-        // must be paid before the payout milestone.
+        if (
+            uint8(s.phase) < uint8(TradeTypes.Phase.Shipped) ||
+            uint8(s.phase) > uint8(TradeTypes.Phase.Delivered)
+        ) revert InvalidStateRange(id, s.phase);
+        // Duty is forwarded to the treasury only when the credit's proceeds are released. Once
+        // the credit has paid, escrowing duty here would lock it forever, so it must be paid
+        // before honor/maturity.
         if (letterOfCredit.isPaid(id)) revert LCAlreadySettled(id);
 
         if (amount > 0) settlementToken.safeTransferFrom(msg.sender, address(letterOfCredit), amount);
@@ -328,14 +447,14 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
         emit DutyPaid(id, msg.sender, amount);
     }
 
-    /// @notice Importer confirms final delivery. Releases the title; DDP pays out here.
+    /// @notice Importer confirms final delivery. Releases the title.
     function confirmFinalDelivery(uint256 id) external onlyRole(ROLE_IMPORTER) {
         TradeTypes.Shipment memory s = _requireShipment(id);
         if (s.importer != msg.sender) revert Unauthorized(msg.sender);
         _finalizeDelivery(id, msg.sender);
     }
 
-    /// @notice Either bank may force-finalize once objective milestones are complete.
+    /// @notice Either bank may force-finalize once objective custody milestones are complete.
     function forceFinalizeDelivery(uint256 id) external onlyRole(ROLE_BANK) {
         _finalizeDelivery(id, msg.sender);
         emit DeliveryForceFinalized(id, msg.sender);
@@ -345,20 +464,30 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
     // Neutrality safeguards
     // ---------------------------------------------------------------------
 
-    /// @notice Refunds the escrow to the importer if the exporter never shipped before the deadline.
-    function reclaimExpiredLC(uint256 id) external {
-        TradeTypes.Shipment memory s = _requireShipment(id);
+    /// @notice Returns the funds of an expired, unused credit to the **issuing bank** (the
+    ///         importer never funded the escrow). If the beneficiary had shipped but never
+    ///         presented, the escrowed title returns to the exporter with the goods.
+    function reclaimExpiredLC(uint256 orderId) external {
+        TradeTypes.Shipment memory s = _requireShipment(orderId);
         bool authorised = msg.sender == s.importer ||
             hasRole(ROLE_BANK, msg.sender) ||
             hasRole(DEFAULT_ADMIN_ROLE, msg.sender);
         if (!authorised) revert NotReclaimAuthority(msg.sender);
 
-        LetterOfCredit.LC memory lc = letterOfCredit.getLC(id);
+        LetterOfCredit.LC memory lc = letterOfCredit.getLC(orderId);
         uint256 dutyRefund = lc.dutyPaid ? lc.dutyAmount : 0;
+        address bank = lc.issuingBank;
 
-        letterOfCredit.refund(id);
-        shipmentTracker.setPhase(id, TradeTypes.Phase.Reclaimed);
-        emit LCReclaimed(id, s.importer, s.lcAmount, dutyRefund);
+        letterOfCredit.reclaim(orderId);
+        shipmentTracker.setPhase(orderId, TradeTypes.Phase.Reclaimed);
+        // Goods shipped but never presented: return the escrowed title to the exporter.
+        if (shipmentTracker.exists(orderId)) {
+            shipmentTracker.setCustody(orderId, TradeTypes.Custody.AtExporter);
+            shipmentTracker.setRiskHolder(orderId, s.exporter);
+            shipmentTracker.transferTitle(orderId, s.exporter);
+            emit TitleTransferred(orderId, address(this), s.exporter);
+        }
+        emit LCReclaimed(orderId, bank, s.lcAmount, dutyRefund);
     }
 
     /// @notice Revokes a document: the original issuer or the admin.
@@ -392,38 +521,26 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
         _docRegistryOf[id][docType] = address(reg);
     }
 
-    function _triggerSettlement(uint256 id) internal {
-        TradeTypes.Shipment memory s = shipmentTracker.getShipment(id);
-        letterOfCredit.settle(id, s.exporter);
-        emit AtomicLCPayoutExecuted(id, s.exporter, s.lcAmount, s.phase);
-    }
-
     function _finalizeDelivery(uint256 id, address actor) internal {
         TradeTypes.Shipment memory s = _requireActive(id);
-        if (s.phase != TradeTypes.Phase.LoadedOnVessel) {
-            revert InvalidState(id, TradeTypes.Phase.LoadedOnVessel, s.phase);
+        if (s.custody != TradeTypes.Custody.OnVessel) {
+            revert InvalidCustody(id, TradeTypes.Custody.OnVessel, s.custody);
         }
 
-        complianceEngine.requireCompliant(id, s.term, TradeTypes.Phase.Delivered);
+        complianceEngine.requireCompliant(id, s.term, TradeTypes.Custody.Delivered);
 
-        shipmentTracker.setPhase(id, TradeTypes.Phase.Delivered);
+        shipmentTracker.setCustody(id, TradeTypes.Custody.Delivered);
         // Under DDP risk passes only on delivery at destination.
         if (s.term == TradeTypes.Incoterm.DDP) {
             shipmentTracker.setRiskHolder(id, s.importer);
         }
         shipmentTracker.transferTitle(id, s.importer);
-        emit MilestoneReached(id, TradeTypes.Phase.Delivered, actor);
+        emit MilestoneReached(id, TradeTypes.Custody.Delivered, actor);
         emit TitleTransferred(id, address(this), s.importer);
 
-        if (s.term == TradeTypes.Incoterm.DDP) _triggerSettlement(id);
-        _maybeSettle(id);
-    }
-
-    function _maybeSettle(uint256 id) internal {
-        TradeTypes.Shipment memory s = shipmentTracker.getShipment(id);
-        if (s.phase == TradeTypes.Phase.Delivered && letterOfCredit.isPaid(id)) {
-            shipmentTracker.setPhase(id, TradeTypes.Phase.Settled);
-        }
+        // Custody and the credit converge: a paid credit settles on delivery; an unpaid one
+        // settles when the bank honors (or the deferred payment is drawn) after delivery.
+        shipmentTracker.setPhase(id, letterOfCredit.isPaid(id) ? TradeTypes.Phase.Settled : TradeTypes.Phase.Delivered);
     }
 
     function _requireShipment(uint256 id) internal view returns (TradeTypes.Shipment memory s) {
@@ -477,20 +594,29 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
         return DocumentRegistry(documentRegistryOf(id, docType)).isValid(id, docType);
     }
 
-    function payoutPhaseOf(TradeTypes.Incoterm term) external pure returns (TradeTypes.Phase) {
-        if (term == TradeTypes.Incoterm.EXW) return TradeTypes.Phase.PickedUp;
-        if (term == TradeTypes.Incoterm.DDP) return TradeTypes.Phase.Delivered;
-        return TradeTypes.Phase.LoadedOnVessel;
+    /// @notice Stipulated documentary set of the credit for a trade's Incoterm.
+    function presentationDocuments(uint256 id) external view returns (uint8) {
+        TradeTypes.Shipment memory s = _requireShipment(id);
+        return complianceEngine.presentationMask(s.term);
     }
 
-    function requiredDocumentsAt(uint256 id, TradeTypes.Phase phase) external view returns (uint8) {
+    /// @notice Custody-gate documentary set for a trade's Incoterm at a custody checkpoint.
+    function requiredDocumentsAt(uint256 id, TradeTypes.Custody custody) external view returns (uint8) {
         TradeTypes.Shipment memory s = _requireShipment(id);
-        return complianceEngine.requiredMask(s.term, phase);
+        return complianceEngine.requiredMask(s.term, custody);
     }
 
-    function isCompliant(uint256 id, TradeTypes.Phase phase) external view returns (bool) {
+    /// @notice Custody-gate compliance at a checkpoint.
+    function isCompliant(uint256 id, TradeTypes.Custody custody) external view returns (bool) {
         TradeTypes.Shipment memory s = _requireShipment(id);
-        return complianceEngine.isCompliant(id, s.term, phase);
+        return complianceEngine.isCompliant(id, s.term, custody);
+    }
+
+    /// @notice Bank's examination preview: the first stipulated document that is missing or
+    ///         revoked, if any. `(true, _)` means a complying presentation.
+    function examinePresentation(uint256 id) external view returns (bool ok, TradeTypes.DocType missing) {
+        TradeTypes.Shipment memory s = _requireShipment(id);
+        return complianceEngine.firstMissingPresentation(id, s.term);
     }
 
     /// @notice Accepts the escrowed title token (safe-mint receiver hook).
