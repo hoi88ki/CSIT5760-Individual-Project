@@ -8,16 +8,19 @@ export const CORE_ABI = [
   "function ROLE_VERIFIER() view returns (bytes32)",
   "function grantRoles(bytes32[] roles, address[] accounts)",
   "function mint(address to, uint256 amount)",
-  // workflow
-  "function createOrder(address exporter, uint8 term, uint256 lcAmount, uint64 deadline) returns (uint256)",
+  // application → issuance → shipment → presentation
+  "function createOrder(address exporter, uint8 term, uint256 lcAmount, uint64 deadline, uint8 paymentTerm, uint64 deferredDays) returns (uint256)",
+  "function issueLetterOfCredit(uint256 orderId)",
   "function createShipment(uint256 orderId, string invoiceCID, string packingListCID) returns (uint256)",
-  "function openLetterOfCredit(uint256 id)",
+  "function presentDocuments(uint256 id)",
+  "function honorPresentation(uint256 id)",
+  "function drawDeferredPayment(uint256 id)",
   "function anchorDocument(uint256 id, uint8 docType, string cid)",
   "function payCustomsDuty(uint256 id, uint256 amount)",
   "function confirmPickup(uint256 id)",
   "function confirmVesselLoading(uint256 id, string blCid)",
   "function confirmFinalDelivery(uint256 id)",
-  "function reclaimExpiredLC(uint256 id)",
+  "function reclaimExpiredLC(uint256 orderId)",
   "function forceFinalizeDelivery(uint256 id)",
   "function revokeDocument(uint256 id, uint8 docType)",
   // registry / module administration (admin or ROLE_REGISTRY_ADMIN)
@@ -34,10 +37,11 @@ export const CORE_ABI = [
   "function orderCount() view returns (uint256)",
   "function shipmentCount() view returns (uint256)",
   "function hasValidDocument(uint256 id, uint8 docType) view returns (bool)",
-  "function requiredDocumentsAt(uint256 id, uint8 phase) view returns (uint8)",
-  "function payoutPhaseOf(uint8 term) view returns (uint8)",
-  "function getShipment(uint256 id) view returns (tuple(uint256 id, uint256 orderId, address exporter, address importer, uint8 term, uint8 phase, uint64 createdAt, uint64 deadline, uint256 lcAmount, address riskHolder))",
-  "function getLC(uint256 id) view returns (tuple(uint256 shipmentId, uint256 amount, bool funded, bool paid, bool reclaimed, uint256 dutyAmount, bool dutyPaid, address dutyPayer))",
+  "function presentationDocuments(uint256 id) view returns (uint8)",
+  "function examinePresentation(uint256 id) view returns (bool ok, uint8 missing)",
+  "function requiredDocumentsAt(uint256 id, uint8 custody) view returns (uint8)",
+  "function getShipment(uint256 id) view returns (tuple(uint256 id, uint256 orderId, address exporter, address importer, uint8 term, uint8 paymentTerm, uint64 deferredDays, uint8 phase, uint8 custody, uint64 createdAt, uint64 deadline, uint256 lcAmount, address riskHolder))",
+  "function getLC(uint256 id) view returns (tuple(uint256 id, address issuingBank, address beneficiary, uint256 amount, uint8 term, uint64 deferredDays, uint64 issuedAt, uint8 requiredDocs, bool issued, bool presented, uint64 presentedAt, bool honored, uint64 honoredAt, uint64 maturityAt, bool paid, bool reclaimed, uint256 dutyAmount, bool dutyPaid, address dutyPayer))",
 ];
 
 export const ERC20_ABI = [
@@ -48,7 +52,18 @@ export const ERC20_ABI = [
 ];
 
 export const INCOTERMS = ["EXW", "FOB", "CIF", "DDP"];
-export const PHASES = ["Created", "LCFunded", "PickedUp", "LoadedOnVessel", "Delivered", "Settled", "Reclaimed"];
+export const PAYMENT_TERMS = ["Sight", "Deferred"];
+export const PHASES = [
+  "OrderPlaced",
+  "LCIssued",
+  "Shipped",
+  "Presented",
+  "Honored",
+  "Delivered",
+  "Settled",
+  "Reclaimed",
+];
+export const CUSTODY = ["AtExporter", "PickedUp", "OnVessel", "Delivered"];
 export const DOC_TYPES = [
   "CommercialInvoice",
   "PackingList",

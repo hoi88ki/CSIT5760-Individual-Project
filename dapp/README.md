@@ -20,8 +20,14 @@ npm run dev        # → http://localhost:5173
 2. Select the chain where the core is deployed (Sepolia `11155111` or local Hardhat `31337`).
 3. Paste the **TradeChainCore** address and click **Connect MetaMask / Load**. MetaMask asks you to
    authorize the page; select an account that has the role needed for the action.
-4. Walk the numbered panels: order → shipment → documents/funding → milestones. MetaMask asks you
-   to review and sign each transaction.
+4. Walk the numbered panels in role order: **1** importer applies for the credit (`createOrder` with
+   sight/deferred terms) → **bank** approves TradeUSD and issues it (`issueLetterOfCredit`, which
+   funds the escrow) → **exporter** ships (`createShipment`, only after issuance) → **2** documents,
+   presentation (`presentDocuments`) and the bank's examination/honor (`honorPresentation`,
+   `drawDeferredPayment` at maturity) → **3** custody milestones and delivery. MetaMask asks you to
+   review and sign each transaction; the **Active account** selector (or MetaMask itself) switches
+   the sender between steps. A full multi-account walkthrough is in
+   [`../docs/FRONTENDS.md`](../docs/FRONTENDS.md).
 
 The dashboard listens for MetaMask account and chain changes and refreshes its connection. It does
 not request a network switch automatically: select the correct network yourself. Without MetaMask,

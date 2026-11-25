@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { BrowserProvider, JsonRpcProvider, Contract, MaxUint256, isAddress, parseUnits, formatUnits } from "ethers";
-import { CORE_ABI, ERC20_ABI, INCOTERMS, PHASES, DOC_TYPES } from "./abi.js";
+import { CORE_ABI, ERC20_ABI, INCOTERMS, PAYMENT_TERMS, PHASES, CUSTODY, DOC_TYPES } from "./abi.js";
 import { uploadFile, fetchFromKubo } from "./ipfs.js";
 
 const rpc = import.meta.env.VITE_RPC_URL || "http://127.0.0.1:8545";
@@ -16,7 +16,14 @@ export default function App() {
   const [shipment, setShipment] = useState("—");
 
   const [ipfs, setIpfs] = useState({ node: "http://127.0.0.1:5001" });
-  const [order, setOrder] = useState({ exporter: "", term: "1", lcAmount: "100000", deadlineDays: "30" });
+  const [order, setOrder] = useState({
+    exporter: "",
+    term: "1",
+    lcAmount: "100000",
+    deadlineDays: "30",
+    paymentTerm: "0",
+    deferredDays: "3",
+  });
   const [ship, setShip] = useState({ orderId: "1", invoiceCid: "", packingCid: "" });
   const [doc, setDoc] = useState({ shipmentId: "1", docType: "3", cid: "" });
   const [mile, setMile] = useState({ shipmentId: "1", blCid: "" });
@@ -150,15 +157,17 @@ export default function App() {
       for (let i = 0; i < DOC_TYPES.length; i++) {
         docs.push(`${DOC_TYPES[i]}=${await core.hasValidDocument(BigInt(id), i)}`);
       }
+      const [ok, missing] = await core.examinePresentation(BigInt(id));
+      const payTerm = PAYMENT_TERMS[Number(lc.term)];
       setShipment(
         `${counts}\n\nshipment #${s.id} (order #${s.orderId}) · ${INCOTERMS[Number(s.term)]} · phase ${
           PHASES[Number(s.phase)]
-        }\n` +
-          `exporter ${s.exporter}\nimporter ${s.importer}\nriskHolder ${s.riskHolder}\n` +
-          `L/C ${formatUnits(s.lcAmount, 6)} · funded ${lc.funded} · paid ${lc.paid} · duty ${formatUnits(
-            lc.dutyAmount,
-            6
-          )}\n\n` +
+        } · custody ${CUSTODY[Number(s.custody)]}\n` +
+          `beneficiary (exporter) ${s.exporter}\napplicant (importer) ${s.importer}\nriskHolder ${s.riskHolder}\n` +
+          `L/C ${formatUnits(s.lcAmount, 6)} tUSD · ${payTerm}${Number(lc.term) === 1 ? ` (+${lc.deferredDays}d)` : ""}\n` +
+          `issuing bank ${lc.issuingBank}\nissued ${lc.issued} · presented ${lc.presented} · honored ${lc.honored} · paid ${lc.paid} · reclaimed ${lc.reclaimed}\n` +
+          `duty ${formatUnits(lc.dutyAmount, 6)}${lc.dutyPaid ? " (paid)" : " (unpaid)"}\n` +
+          `examination: ${ok ? "presentation set complete — the bank may honor" : `not presentable yet (missing ${DOC_TYPES[Number(missing)]})`}\n\n` +
           `documents: ${docs.join(", ")}`
       );
     } catch {
@@ -200,8 +209,8 @@ export default function App() {
         </section>
 
         <section>
-          <h2>1 · Order &amp; Shipment</h2>
-          <label>Exporter address</label>
+          <h2>1 · Apply for credit → bank issues → shipment</h2>
+          <label>Beneficiary (exporter) address</label>
           <input name="exporter" value={order.exporter} onChange={set(setOrder)} placeholder="0x…" />
           <div className="row">
             <div>
@@ -219,17 +228,48 @@ export default function App() {
               <input name="lcAmount" value={order.lcAmount} onChange={set(setOrder)} />
             </div>
           </div>
+          <div className="row">
+            <div>
+              <label>Payment term</label>
+              <select name="paymentTerm" value={order.paymentTerm} onChange={set(setOrder)}>
+                {PAYMENT_TERMS.map((t, i) => (
+                  <option key={t} value={i}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label>Deferral (days, Deferred only)</label>
+              <input name="deferredDays" value={order.deferredDays} onChange={set(setOrder)} />
+            </div>
+          </div>
           <label>Deadline (days)</label>
           <input name="deadlineDays" value={order.deadlineDays} onChange={set(setOrder)} />
           <button
             onClick={() =>
-              run("createOrder", async () => {
-                const d = BigInt(Math.floor(Date.now() / 1000) + Number(order.deadlineDays) * 86400);
-                return core.connect(await signer()).createOrder(order.exporter, Number(order.term), parseUnits(order.lcAmount, 6), d);
+              run("createOrder (apply for L/C)", async () => {
+                // Base the deadline on the chain clock (a shifted local node would reject wall-clock math).
+                let now = Math.floor(Date.now() / 1000);
+                try {
+                  now = Number((await provider.getBlock("latest")).timestamp);
+                } catch {}
+                const d = BigInt(now + 1) + BigInt(Number(order.deadlineDays) * 86400);
+                const deferred = Number(order.paymentTerm) === 1;
+                return core
+                  .connect(await signer())
+                  .createOrder(
+                    order.exporter,
+                    Number(order.term),
+                    parseUnits(order.lcAmount, 6),
+                    d,
+                    Number(order.paymentTerm),
+                    deferred ? BigInt(order.deferredDays || "0") : 0
+                  );
               })
             }
           >
-            Importer → createOrder
+            Importer → createOrder (apply for L/C)
           </button>
           <div className="row">
             <div>
@@ -241,6 +281,15 @@ export default function App() {
               <input name="shipmentId" value={doc.shipmentId} onChange={set(setDoc)} />
             </div>
           </div>
+          <button
+            onClick={() =>
+              run("issueLetterOfCredit", async () =>
+                core.connect(await signer()).issueLetterOfCredit(ship.orderId)
+              )
+            }
+          >
+            Bank → issueLetterOfCredit (funds the escrow)
+          </button>
           <label>Invoice CID</label>
           <input name="invoiceCid" value={ship.invoiceCid} onChange={set(setShip)} placeholder="bafy…" />
           <label>Packing-list CID</label>
@@ -254,10 +303,14 @@ export default function App() {
           >
             Exporter → createShipment
           </button>
+          <p className="hint">
+            The bank — not the importer — funds the escrow: connect the bank account and approve TradeUSD
+            below first. The named exporter can ship only after the credit is issued and operative.
+          </p>
         </section>
 
         <section>
-          <h2>2 · Documents &amp; Funding</h2>
+          <h2>2 · Documents, presentation &amp; examination</h2>
           <label>IPFS node (this role's kubo API)</label>
           <input name="node" value={ipfs.node} onChange={set(setIpfs)} placeholder="http://127.0.0.1:5001" />
           <p className="hint">
@@ -266,11 +319,6 @@ export default function App() {
             the node that holds it — see the document viewer below.
           </p>
           <button onClick={() => run("approve token", approveToken)}>Approve TradeUSD</button>
-          <button
-            onClick={() => run("openLetterOfCredit", async () => core.connect(await signer()).openLetterOfCredit(doc.shipmentId))}
-          >
-            Importer → openLetterOfCredit
-          </button>
           <label>DocType</label>
           <select name="docType" value={doc.docType} onChange={set(setDoc)}>
             {DOC_TYPES.slice(2).map((d, i) => (
@@ -286,6 +334,21 @@ export default function App() {
             onClick={() => run("anchorDocument", async () => core.connect(await signer()).anchorDocument(doc.shipmentId, Number(doc.docType), doc.cid))}
           >
             Authorised role → anchorDocument
+          </button>
+          <button
+            onClick={() => run("presentDocuments", async () => core.connect(await signer()).presentDocuments(doc.shipmentId))}
+          >
+            Exporter → presentDocuments
+          </button>
+          <button
+            onClick={() => run("honorPresentation", async () => core.connect(await signer()).honorPresentation(doc.shipmentId))}
+          >
+            Bank → honorPresentation (examines &amp; honors)
+          </button>
+          <button
+            onClick={() => run("drawDeferredPayment", async () => core.connect(await signer()).drawDeferredPayment(doc.shipmentId))}
+          >
+            Anyone → drawDeferredPayment (after maturity)
           </button>
         </section>
 
@@ -325,11 +388,11 @@ export default function App() {
           >
             Importer → confirmFinalDelivery
           </button>
-          <button onClick={() => run("reclaimExpiredLC", async () => core.connect(await signer()).reclaimExpiredLC(doc.shipmentId))}>
-            reclaimExpiredLC (importer/bank/admin)
-          </button>
           <button onClick={() => run("forceFinalizeDelivery", async () => core.connect(await signer()).forceFinalizeDelivery(doc.shipmentId))}>
             Bank → forceFinalizeDelivery
+          </button>
+          <button onClick={() => run("reclaimExpiredLC", async () => core.connect(await signer()).reclaimExpiredLC(ship.orderId))}>
+            reclaimExpiredLC (unused credit → issuing bank)
           </button>
         </section>
 
