@@ -5,6 +5,32 @@ Authoritative design rationale stays in [`docs/DESIGN_DECISIONS.md`](./docs/DESI
 
 ---
 
+## 2026-11-25 — Multi-account demo on the live deployment + UI packaging
+
+With six distinct role keys in `.env` (`ADMIN/IMPORTER/EXPORTER/BANK/LOGISTICS/VERIFIER_PRIVATE_KEY`),
+the workflow is now demonstrated on the live Sepolia deployment the way it would run in reality —
+**every transaction signed by its own party**:
+
+- `scripts/setup-accounts.js` validates the keys (well-formed, distinct, admin holds
+  `DEFAULT_ADMIN_ROLE`), tops the role accounts up with ETH from the ADMIN account, grants the five
+  operational roles to their own addresses in one `grantRoles` transaction, and mints demo
+  `TradeUSD` (1,000,000 to the bank — it funds the escrows; 10,000 each to the importer/exporter).
+  Idempotent; writes `deployments/<network>-accounts-setup.md`.
+- `scripts/demo-accounts.js` drives the complete sight credit with per-step signature verification
+  and on-chain checks: importer applies → bank issues (25,000 tUSD escrowed **by the bank**) →
+  exporter ships → verifier attests → logistics custody (risk moves, no payment) → exporter
+  presents → bank honors (pays; escrow emptied) → importer delivers (`Settled`, title to the
+  importer). Writes the full transaction record (Etherscan links, blocks, gas, balances) to
+  `deployments/<network>-demo-log.md`.
+- Recorded run committed: `deployments/sepolia-accounts-setup.md` and
+  `deployments/sepolia-demo-log.md` (trade #2 on the live core, blocks 12210371–12210381).
+- **UI packaging**: `docker compose up --build` serves the flow console on :8080 (nginx, `ui/`)
+  and the role dashboard on :8081 (multi-stage Vite build → nginx, `VITE_RPC_URL` build arg
+  defaults to a public Sepolia node for read-only data). Documented in the README and
+  `docs/FRONTENDS.md`.
+
+---
+
 ## 2026-11-25 — Bank-issued documentary credit (L/C workflow realism)
 
 Implements the rework requested in `TODO.md`: the prototype no longer treats the letter of credit
