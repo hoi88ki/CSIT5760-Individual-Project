@@ -21,6 +21,13 @@ module.exports = {
         enabled: true,
         runs: 200,
       },
+      // The core's constructor embeds its four companions' creation code, so every byte
+      // saved per contract counts four times toward the EIP-3860 initcode cap (49,152 B,
+      // enforced on Sepolia). Dropping the metadata hash saves ~53 B per contract without
+      // affecting Etherscan source verification.
+      metadata: {
+        bytecodeHash: "none",
+      },
     },
   },
   networks: {

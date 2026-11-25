@@ -1,6 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { loadFixture, time } = require("@nomicfoundation/hardhat-network-helpers");
+const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 const {
   Incoterm,
   PaymentTerm,
@@ -134,8 +135,9 @@ describe("Orders, L/C issuance & shipment creation", function () {
       const bankBefore = await env.token.balanceOf(env.bank.address);
       const escrowBefore = await env.token.balanceOf(locAddr);
 
+      // Issuance details are emitted by the LetterOfCredit module (LCIssued).
       await expect(env.core.connect(env.bank).issueLetterOfCredit(orderId))
-        .to.emit(env.core, "LetterOfCreditIssued")
+        .to.emit(env.loc, "LCIssued")
         .withArgs(orderId, env.bank.address, env.exporter.address, LC, PaymentTerm.Sight, 0n, 0b111011);
 
       expect(await env.token.balanceOf(locAddr)).to.equal(escrowBefore + LC);
@@ -305,9 +307,10 @@ describe("Orders, L/C issuance & shipment creation", function () {
         "NotBeneficiary"
       );
 
+      // The presentation is emitted by the LetterOfCredit module (LCPresented).
       await expect(env.core.connect(env.exporter).presentDocuments(1n))
-        .to.emit(env.core, "DocumentsPresented")
-        .withArgs(1n, env.exporter.address);
+        .to.emit(env.loc, "LCPresented")
+        .withArgs(1n, env.exporter.address, anyValue);
       expect((await env.core.getShipment(1n)).phase).to.equal(Phase.Presented);
       expect((await env.core.getLC(1n)).presented).to.equal(true);
 

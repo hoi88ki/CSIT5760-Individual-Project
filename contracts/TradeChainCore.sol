@@ -100,15 +100,8 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
         uint256 lcAmount,
         uint64 deadline
     );
-    event LetterOfCreditIssued(
-        uint256 indexed orderId,
-        address indexed issuingBank,
-        address indexed beneficiary,
-        uint256 amount,
-        TradeTypes.PaymentTerm paymentTerm,
-        uint64 deferredDays,
-        uint8 requiredDocs
-    );
+    // Issuance/presentation details are emitted by the LetterOfCredit module
+    // (LCIssued / LCPresented) — no duplicate core-level events.
     event ShipmentCreated(
         uint256 indexed id,
         uint256 indexed orderId,
@@ -118,7 +111,6 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
         uint256 lcAmount,
         uint64 deadline
     );
-    event DocumentsPresented(uint256 indexed id, address indexed beneficiary);
     event MilestoneReached(uint256 indexed id, TradeTypes.Custody custody, address indexed actor);
     event AtomicLCPayoutExecuted(uint256 indexed id, address indexed beneficiary, uint256 amount);
     event DutyPaid(uint256 indexed id, address indexed payer, uint256 amount);
@@ -278,16 +270,6 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
             requiredDocs
         );
         shipmentTracker.setPhase(orderId, TradeTypes.Phase.LCIssued);
-
-        emit LetterOfCreditIssued(
-            orderId,
-            msg.sender,
-            s.exporter,
-            s.lcAmount,
-            s.paymentTerm,
-            s.deferredDays,
-            requiredDocs
-        );
     }
 
     /// @notice The **named** exporter ships against the issued credit, anchoring the invoice and
@@ -325,8 +307,6 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
         complianceEngine.requirePresentationCompliant(id, s.term);
         letterOfCredit.recordPresentation(id);
         shipmentTracker.setPhase(id, TradeTypes.Phase.Presented);
-
-        emit DocumentsPresented(id, msg.sender);
     }
 
     /// @notice The issuing bank examines the presentation against the credit's stipulated
