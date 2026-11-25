@@ -4,39 +4,49 @@
 
 - **Roles are trusted.** `AccessControl` roles are granted by the admin. Verifiers follow a
   **trusted-oracle** model: they are trusted to have validated off-chain content before anchoring.
+  The **issuing bank is a trusted examiner**: the contract can prove that every stipulated document
+  slot is anchored and currently verified, but it cannot read IPFS contents, assess documentary
+  wording, or apply UCP 600/ISBP discrepancy rules — honoring is the bank's role-gated decision.
 - **Docs are tamper-evident, not private.** Only CIDs are on-chain. An anchor is locked once written
-  (no silent CID replacement); verification can be revoked and is checked at payout.
+  (no silent CID replacement); verification can be revoked and is re-checked at examination time.
 - **The settlement token is trusted.** `TradeUSD` is injected; a malicious token cannot break
   `nonReentrant`/CEI (proved by `MaliciousReentrancy`), but could censor transfers.
 - **Only the core mutates.** Every companion's mutators are gated by a `CONTROLLER_ROLE` that only
   the core holds, and each module's `AccessControl` is mounted on the core (the core holds
   `DEFAULT_ADMIN_ROLE` and administers module roles via `setModuleRole`), so module state can only
   change through the role-gated facade.
+- **The escrow is bank money.** The issuing bank — never the importer — prefunds the credit at
+  issuance, which makes the honor undertaking deterministic (100% cash-collateralised). Real L/Cs
+  are contingent obligations backed by credit lines; this is a teaching model.
 - **The document registry is swappable, and the swap is guarded.** `setDocumentRegistry` accepts
   only a registry bound to this core whose runtime code matches the deployment-time registry, so a
   look-alike contract cannot forge `isValid` for compliance. Anchors snapshot their registry, so a
   swap never hides already-anchored documents.
 - **Title transfer is core-only.** The e-B/L ERC-721 lives in `ShipmentTracker`; `_update` rejects
   every externally initiated transfer, so the holder cannot bypass the milestone gate with
-  `transferFrom`/`safeTransferFrom`. Only the core's `transferTitle` moves the title during final delivery; for EXW/FOB/CIF, the L/C may already have paid.
+  `transferFrom`/`safeTransferFrom`. Only the core's `transferTitle` moves the title (at final
+  delivery — or back to the exporter when an unused expired credit is reclaimed).
 
 ## 2. Threat table
 
 | Threat | Failure scenario | Mitigation (code) | Evidence (tests) |
 |--------|------------------|-------------------|------------------|
-| **Documentary fraud** | Payout without a mandatory document; CID replaced after funding | `ComplianceEngine.requireCompliant`; `DocumentRegistry` anchor-once-then-lock | `Incoterms.e2e`, `DocumentRegistry`, `ComplianceEngine` |
+| **Documentary fraud** | Honor without a mandatory document; CID replaced after issuance | `ComplianceEngine.requirePresentationCompliant` at presentation **and** re-examined inside `LetterOfCredit.honor`; `DocumentRegistry` anchor-once-then-lock | `Incoterms.e2e`, `DocumentRegistry`, `ComplianceEngine`, `Modules` |
+| **Shipping without a credit** | The exporter ships before the bank has issued an operative credit | `createShipment` requires phase `LCIssued` (set only by bank issuance); the named-beneficiary check blocks any other exporter | `Order`, `AccessControl` |
 | **Unauthorized attestation** | Exporter self-signs a certificate | Per-`DocType` role check in `TradeChainCore.anchorDocument` | `DocumentRegistry`, `AccessControl` |
-| **Revoked attestation** | Certificate revoked after being relied upon | `DocumentRegistry.revoke` clears `verified`; checked at compliance time | `DocumentRegistry` revocation tests |
-| **Reentrancy** | Malicious ERC-20 transfer callback / ERC-721 receiver hook | `nonReentrant` on `LetterOfCredit.settle`/`refund` + strict CEI + `SafeERC20` | `Reentrancy.test.js` (single payout) |
+| **Revoked attestation** | Certificate revoked after being relied upon | `DocumentRegistry.revoke` clears `verified`; presentation requires validity and the bank re-examines before honoring | `DocumentRegistry` revocation tests, `Incoterms.e2e` ("revoked … refuse") |
+| **Unauthorized honor** | A non-bank (or the beneficiary) honors its own presentation | `honorPresentation` is `ROLE_BANK`-gated; the module re-checks compliance independently of the core | `AccessControl`, `Modules` |
+| **Reentrancy** | Malicious ERC-20 transfer callback / ERC-721 receiver hook | `nonReentrant` on `LetterOfCredit.honor`/`drawDeferred`/`reclaim` + strict CEI + `SafeERC20` | `Reentrancy.test.js` (sight honor and deferred draw) |
 | **Stablecoin inflation** | Anyone mints `TradeUSD` | `mint` is `MINTER_ROLE`-gated | `Tokens.test.js` |
 | **Settlement stall (importer)** | Importer withholds delivery | Either bank may `forceFinalizeDelivery` | `Neutrality` |
-| **Settlement stall (exporter)** | Exporter never ships | Deadline reclaim by importer/bank/admin | `Neutrality` |
-| **Unauthorized milestone** | Wrong role advances the shipment or mints | `onlyRole` + per-shipment importer/exporter checks | `AccessControl` |
+| **Settlement stall (bank, deferred)** | The bank never triggers the maturity payout | `drawDeferredPayment` is permissionless after `maturityAt` — the undertaking is deterministic | `Incoterms.e2e` (deferred flow, drawn by a third party) |
+| **Settlement stall (exporter)** | The exporter never ships | Expired unused credit is reclaimed **to the issuing bank** (importer/bank/admin may trigger) | `Neutrality` |
+| **Stranded duty escrow** | Duty escrowed *after* the proceeds were released would never reach the treasury | `payCustomsDuty` reverts `LCAlreadySettled` once `LetterOfCredit.isPaid(id)`; DDP duty must be paid before honor | `AccessControl.test.js`, `Incoterms.e2e` (DDP gate) |
+| **Unauthorized milestone** | Wrong role advances custody / mints the title | `onlyRole` + per-trade beneficiary/importer checks + custody guards | `AccessControl` |
 | **Unauthorized title transfer** | Holder sells/endorses the e-B/L before final delivery | `ShipmentTracker._update` rejects public ERC-721 transfers; only the core can `transferTitle` | `Tokens.test.js` (public `transferFrom` reverts) |
-| **Stranded duty escrow** | Duty escrowed *after* the L/C has paid out would never be forwarded to the treasury (only `LetterOfCredit.settle` releases it) and would be locked forever | `TradeChainCore.payCustomsDuty` reverts `LCAlreadySettled` once `LetterOfCredit.isPaid(id)` | `AccessControl.test.js` ("cannot escrow duty once the L/C has been paid") |
 | **Forged compliance via a swapped registry** | A look-alike "registry" answering `isValid == true` is swapped in, releasing the escrow with no documents | `setDocumentRegistry` requires a registry bound to this core *and* matching the deployment-time runtime codehash; only the admin or `ROLE_REGISTRY_ADMIN` may swap | `RegistrySwap.test.js` (`RegistryInvalidCode`) |
-| **Orphaned documents after a registry swap** | Replacing the registry would hide previously anchored documents and stall in-flight shipments | The core snapshots the registry per `(shipment, DocType)`; `ComplianceEngine` resolves the registry that holds each anchor | `RegistrySwap.test.js` ("routes new anchors … while old anchors keep resolving") |
-| **Bad input** | Empty CID, zero/oversized payment, past deadline | Custom-error guards + allowance failures | `Order`, `DocumentRegistry`, `Modules` |
+| **Orphaned documents after a registry swap** | Replacing the registry would hide previously anchored documents and stall in-flight trades | The core snapshots the registry per `(trade, DocType)`; `ComplianceEngine` resolves the registry that holds each anchor | `RegistrySwap.test.js` ("routes new anchors … while old anchors keep resolving") |
+| **Bad input** | Empty CID, zero/oversized payment, past deadline, deferral/term mismatch | Custom-error guards + allowance failures (`InvalidDeferral`, `CreditExpired`, …) | `Order`, `DocumentRegistry`, `Modules` |
 | **Integer overflow** | Counter/amount overflow | Solidity 0.8 checked arithmetic | compiler default |
 
 ## 3. Static analysis
@@ -47,17 +57,31 @@
 ## 4. Test & coverage evidence
 
 ```
-npx hardhat test        # 97 passing
-npx hardhat coverage    # statements 100% · branches 93.88% · functions 100% · lines 100%
+npx hardhat test        # 130 passing
+npx hardhat coverage    # statements 100% · branches 98.76% · functions 100% · lines 100%
 ```
 
 Mocks are excluded from the coverage denominator via `.solcover.js`.
 
 ## 5. Known limitations & future work
 
+- **Trusted examination.** On-chain examination proves only that required document slots are
+  anchored and currently verified. The contract cannot read IPFS contents, assess documentary
+  wording, or make UCP 600/ISBP discrepancy decisions; the bank remains a trusted examiner.
+- **No refusal / discrepancy notices.** A timely, compliant presentation locks the credit until the
+  bank honors it — there is no on-chain refusal path (UCP 600 Art. 16). If the bank stalls, funds
+  and title stay escrowed; refusal/discrepancy notices are future work (as noted in the TODO).
+- **100% cash prefunding.** The bank prefunds every credit, making the undertaking deterministic
+  but unlike real contingent L/Cs backed by credit lines or collateral.
+- **Deferred terms are elapsed calendar time after acceptance.** Banking-day calendars, holidays,
+  formal presentation windows, amendments, partial drawings and negotiation/confirmation are future
+  work.
+- **Reclaim covers only unused credits.** A credit whose beneficiary shipped but never presented
+  returns its funds to the bank and the title to the exporter; a *presented* credit is "used" and
+  can only be honored (or refused off-chain).
 - **Duty is unquoted.** `payCustomsDuty` accepts any amount ≥ 0; production should require a
   verifier-signed duty quote.
-- **No pull-payment fallback.** Payout uses `safeTransfer`; a token-level block would strand a
+- **No pull-payment fallback.** Honor uses `safeTransfer`; a token-level block would strand a
   settlement until resolved off-chain.
 - **Single bank / single verifier roles.** Production should split issuing/advising banks and the
   inspection/insurance/customs verifiers, and/or use multisigs.

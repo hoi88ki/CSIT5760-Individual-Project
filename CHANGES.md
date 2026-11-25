@@ -5,6 +5,77 @@ Authoritative design rationale stays in [`docs/DESIGN_DECISIONS.md`](./docs/DESI
 
 ---
 
+## 2026-11-25 — Bank-issued documentary credit (L/C workflow realism)
+
+Implements the rework requested in `TODO.md`: the prototype no longer treats the letter of credit
+as an importer-funded escrow that pays at an Incoterm milestone. It now models a **bank-issued
+documentary credit** and the sequence **order/application → issuance → shipment → presentation →
+examination → honor**, with custody and title following the Incoterm independently of payment.
+
+- **Workflow (contracts).** `createOrder` records the importer's application (beneficiary,
+  Incoterm, sight/deferred terms, expiry) and opens the trade record in `OrderPlaced`.
+  `issueLetterOfCredit(orderId)` (bank-only) pulls the credit amount from the **issuing bank** into
+  the `LetterOfCredit` escrow, records the beneficiary and the stipulated documentary set, and makes
+  the credit operative (`LCIssued`). Only then may the **named** exporter `createShipment`
+  (invoice + packing anchored, title minted to the core). `presentDocuments` records the
+  beneficiary's presentation (compliance-checked and pre-expiry); `honorPresentation` (bank)
+  re-examines the stipulated set on-chain and honors: **sight** pays immediately, **deferred**
+  schedules `maturityAt = honoredAt + deferral`, drawn by `drawDeferredPayment` (permissionless
+  after maturity). `reclaimExpiredLC` returns the funds of an expired **unused** credit to the
+  **issuing bank** (never the importer); a shipped-but-unpresented trade also returns its escrowed
+  title to the exporter.
+- **Two state dimensions.** `Phase` now tracks the credit (`OrderPlaced → LCIssued → Shipped →
+  Presented → Honored → Delivered → Settled`, terminal `Reclaimed`) and a new `Custody` enum
+  tracks the goods (`AtExporter → PickedUp → OnVessel → Delivered`). Custody milestones still
+  gate documentary readiness and move Incoterm risk, but **never trigger payment**.
+- **ComplianceEngine.** Masks are re-keyed to custody checkpoints, plus `presentationMask(term)` for
+  the credit's stipulated set; the core exposes `presentationDocuments`, `examinePresentation`
+  (examination preview) and per-custody compliance views. `payoutPhaseOf` is gone.
+- **Both UIs** (`ui/index.html` console and the React `dapp/`) were reworked for the new sequence:
+  application panel with payment terms, bank issuance, presentation/honor/draw actions, an L/C
+  viewer (issuing bank, beneficiary, presented/honored/maturity, stipulated bitmask), a credit+custody
+  stepper, an examination preview in the document table, and an updated flow guide. Deadlines are now
+  computed from the chain clock so shifted local nodes do not reject applications.
+- **Scripts.** `seed-demo.js` drives sight flows for all four Incoterms, a deferred (+3d) flow with a
+  maturity draw, and an expired-credit reclaim to the bank. `deploy.js` ABI-facing output unchanged.
+- **Tests.** The suite was rebuilt around the new state machine: issuance gating (ship-before-issue
+  refused; non-beneficiaries refused), presentation rules (too early/discrepant/expired refused),
+  examination (bank-only; re-checks compliance and DDP duty), sight vs deferred honor, maturity draw
+  (permissionless), reclaim windows (presented/honored/paid credits protected; funds to the bank;
+  title returns to the exporter when applicable), milestone neutrality (no payment at pickup/loading)
+  and reentrancy on both honor paths. **130 tests passing; 100 % statements / 98.76 % branches /
+  100 % functions / 100 % lines** (mocks excluded).
+- **Docs.** README, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, `docs/DESIGN_DECISIONS.md` (D22–D27)
+  and `docs/FRONTENDS.md` rewritten around the new workflow, including a click-by-click
+  **multi-account UI simulation guide** (application → bank issuance → shipment → presentation →
+  honor → delivery, deferred maturity, expiry reclaim) used to verify both front ends against a
+  local Hardhat node with six distinct accounts.
+- **Limitations recorded** (see `docs/SECURITY.md` §5 and `TODO.md`): on-chain examination proves
+  only that stipulated document slots are anchored and currently verified; prefunded escrow makes
+  the bank's undertaking deterministic but unlike real contingent L/Cs; deferred terms are elapsed
+  calendar time; a timely presentation can only be honored (no refusal/discrepancy notices yet).
+  e-B/L title-transfer semantics and customs/logistics behavior are unchanged, as scoped.
+
+---
+
+## 2026-11-24 — Wallet connection UX and documentation alignment
+
+- The React dashboard now explicitly requests wallet access on button press, reflects MetaMask
+  account/network changes, and keeps the selected chain/account visible with the loaded core.
+- The standalone console no longer opens a MetaMask permission prompt during page load. It uses
+  an already-authorized account if available, otherwise starts read-only; it now has an account
+  selector and refreshes on account or chain changes. The shipment viewer, lifecycle stepper and
+  role-by-role flow guide are combined into one shipment overview panel.
+- Added [`docs/FRONTENDS.md`](./docs/FRONTENDS.md) for MetaMask, local Hardhat account, and
+  troubleshooting instructions; aligned the README and dashboard guide with the proposal PDF and
+  current contract behavior.
+- Clarified that risk transfer/L/C payout follow the Incoterm milestone while the e-B/L title is
+  released only at final delivery. The proposal's title-at-settlement wording is recorded as a
+  proposal/implementation difference; contract behavior was not changed.
+- Verified in this pass: `npm test` (97 passing) and `cd dapp && npm run build` (successful).
+
+---
+
 ## 2026-11-22 — `ui/` single-file flow console
 
 A no-build HTML/JS dashboard for demonstrating and inspecting the whole application flow
@@ -119,7 +190,7 @@ Verification after the fixes: **87 passing** tests · coverage **100 % statement
 
 ### 1. Proposal review (final version)
 
-The updated `CSIT5760_Project_Proposal_21232072.docx` was re-checked against the implementation and
+The submitted `CSIT5760_Project_Proposal_21232072.pdf` was re-checked against the implementation and
 the earlier merge (M1–M8) and v4 review items. **All substantive items are now applied**: six
 contracts, no `ShipmentNFT`, e-B/L title wording, per-role IPFS nodes, ≥ 90 % branch bar, seven
 document types incl. Customs Clearance, Architecture diagram in §5.1.

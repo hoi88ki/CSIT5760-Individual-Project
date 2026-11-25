@@ -6,11 +6,12 @@
 
 TradeChain is an on-chain documentary trade-finance and supply-chain tracker built as **six
 modular smart contracts**. It stores trade documents on **IPFS** (one kubo node per participant)
-and verifies only their **CIDs** plus the **issuer's role** on **Ethereum**. Exporters, importers,
-banks, logistics providers, verifiers/authorities and the administrator interact through
-**role-gated** contracts, and the suite applies automated **Letter-of-Credit documentary-compliance
-rules** to release a **100 % atomic payout at the exact milestone where risk transfers under the
-chosen Incoterm** (EXW / FOB / CIF / DDP).
+and verifies only their **CIDs** plus the **issuer's role** on **Ethereum**. Importers (L/C
+applicants), **issuing banks**, exporters (beneficiaries), logistics providers, verifiers and the
+administrator interact through **role-gated** contracts that model a **bank-issued documentary
+credit**: application → issuance & escrow prefunding → shipment → presentation → examination →
+honor (sight or deferred), with risk transfer and title release following the chosen Incoterm
+(EXW / FOB / CIF / DDP).
 
 ---
 
@@ -43,23 +44,30 @@ terms follow ICC **Incoterms® 2020**. This reconciliation is slow, expensive, a
 forgery. TradeChain removes the trusted intermediary for the *verification and settlement* step:
 
 - **Documents stay off-chain** (IPFS). Only **CIDs** are anchored on-chain.
-- **Attestations are role-gated.** Inspection/insurance/customs certificates can only be anchored
-  by the authorised verifier address, and can be revoked (invalidating them at payout).
+- **The credit is issued by a bank.** The importer is the **applicant**: it applies for a credit
+  naming the beneficiary, the Incoterm and the payment terms (sight or deferred). The **issuing
+  bank** issues the credit against that application and prefunds the `TradeUSD` escrow — the
+  named exporter can ship only after the credit is issued and operative.
+- **Payment follows presentation, not milestones.** The beneficiary presents the stipulated
+  documents; the bank examines them against the credit's documentary terms and the on-chain
+  CID/verification state and honors a complying presentation — at sight, or after the agreed
+  deferral. Expired, unused credits return to the issuing bank.
+- **Risk still follows the Incoterm.** Custody milestones (pickup → vessel → delivery) move risk
+  (EXW: pickup, FOB/CIF: vessel, DDP: delivery) and gate the documentary readiness of the goods,
+  but they never trigger payment.
 - **The e-B/L is represented on-chain.** It is an **ERC-721 document of title** owned by
-  `ShipmentTracker` (one token per shipment, `tokenId == shipmentId`) and initially escrowed by the
-  core. Public token transfers are blocked; the core releases title to the importer at final delivery.
-- **Payout follows risk.** The contract validates the Incoterm-mandated document set and executes a
-  **100 % atomic payout** at the Incoterm's risk-transfer milestone. For EXW/FOB/CIF, payout can
-  precede final delivery; title remains escrowed until delivery.
+  `ShipmentTracker` (one token per trade, `tokenId == trade id`) and initially escrowed by the
+  core. Public token transfers are blocked; the core releases title to the importer at final
+  delivery (or back to the exporter when an unused expired credit is reclaimed).
 
 ## 2. Objectives
 
 | ID | Objective | Success criterion |
 |----|-----------|-------------------|
 | **OBJ-1** | Document registry + e-B/L token | Each document type is anchored by its designated role; anchored CIDs cannot be silently replaced; public title-token transfers are blocked and the token is released to the importer only at final delivery. |
-| **OBJ-2** | Role-based access control | Every privileged function reverts for accounts lacking the required role; an access-control matrix test passes. |
-| **OBJ-3** | Incoterm-aware tracking & settlement | EXW/FOB/CIF/DDP settle at the correct risk-transfer milestone; DDP blocks until clearance + duty; the required-document set is validated per Incoterm. |
-| **OBJ-4** | Deploy, test & verify on Sepolia | Six contracts **deployed and verified** on Etherscan (see [§7](#7-sepolia-deployment-verified)); ≥ 90 % branch coverage; 0 High Slither findings; positive/negative/boundary tests passing. |
+| **OBJ-2** | Role-based access control | Every privileged function reverts for accounts lacking the required role (the bank issues, examines and honors; only the named beneficiary ships and presents); an access-control matrix test passes. |
+| **OBJ-3** | Incoterm-aware tracking & settlement | The credit's stipulated document set and custody gates follow the Incoterm; DDP blocks honor until clearance + duty; risk transfers at the Incoterm milestone independently of payment. |
+| **OBJ-4** | Deploy, test & verify | Contracts deployed and source-verified (see [§7](#7-sepolia-deployment-verified)); ≥ 90 % branch coverage; 0 High Slither findings; positive/negative/boundary tests passing. |
 
 ## 3. System Architecture
 
@@ -67,11 +75,11 @@ forgery. TradeChain removes the trusted intermediary for the *verification and s
 
 | # | Component | Type | Responsibility |
 |---|-----------|------|----------------|
-| 1 | `TradeChainCore` | concrete (coordinator) | `AccessControl` role authority + single user entry point; deploys/wires the companions; holds the modules' own access control; owns the swappable `DocumentRegistry`; orchestrates documents, milestones, settlement. |
-| 2 | `LetterOfCredit` | module | L/C state machine: funding, `TradeUSD` escrow, customs duty, atomic payout, expiry refund (reclaim). |
-| 3 | `ShipmentTracker` | module + ERC-721 | Orders + shipment records, lifecycle `Phase`, milestone timestamps, risk holder and e-B/L title token (`tokenId == shipmentId`); only the core releases title at final delivery. |
-| 4 | `ComplianceEngine` | view module | Incoterm-aware required-document rules and validation; resolves the registry that holds each anchor. |
-| 5 | `DocumentRegistry` | module | Per-`(shipment, DocType)` CID anchors, verification status, anchor-once-then-lock; **swappable** by the admin or `ROLE_REGISTRY_ADMIN`. |
+| 1 | `TradeChainCore` | concrete (coordinator) | `AccessControl` role authority + single user entry point; deploys/wires the companions; holds the modules' own access control; owns the swappable `DocumentRegistry`; orchestrates the credit workflow (application → issuance → shipment → presentation → honor) and custody. |
+| 2 | `LetterOfCredit` | module | Documentary-credit state machine: bank issuance & `TradeUSD` escrow prefunding, presentation, examination honor (sight/deferred), deferred draw, duty, expiry reclaim to the bank. |
+| 3 | `ShipmentTracker` | module + ERC-721 | Applications (orders) + trade records — one shared id — with the credit lifecycle `Phase`, goods `Custody`, risk holder and e-B/L title token (`tokenId == trade id`); only the core moves the title. |
+| 4 | `ComplianceEngine` | view module | Incoterm-aware rules: custody-gate masks and the stipulated presentation set; resolves the registry that holds each anchor. |
+| 5 | `DocumentRegistry` | module | Per-`(trade, DocType)` CID anchors, verification status, anchor-once-then-lock; **swappable** by the admin or `ROLE_REGISTRY_ADMIN`. |
 | 6 | `TradeUSD` | ERC-20 | Settlement stablecoin with **role-gated** minting. |
 
 `contracts/libraries/TradeTypes.sol` holds the shared enums/structs (inlined, not deployed).
@@ -104,9 +112,9 @@ every externally initiated ERC-721 transfer, so the holder cannot move the title
 
 | Role | Typical holder |
 |------|----------------|
-| `ROLE_EXPORTER` | Exporter / seller |
-| `ROLE_IMPORTER` | Importer / buyer |
-| `ROLE_BANK` | Issuing / advising bank |
+| `ROLE_EXPORTER` | Exporter / beneficiary of the credit |
+| `ROLE_IMPORTER` | Importer / L/C applicant |
+| `ROLE_BANK` | **Issuing bank** (issues, prefunds, examines, honors) |
 | `ROLE_LOGISTICS` | Carrier / freight forwarder |
 | `ROLE_VERIFIER` | Inspection body, insurer, customs (authorised address) |
 | `ROLE_REGISTRY_ADMIN` | The party allowed to replace the active `DocumentRegistry` |
@@ -145,57 +153,73 @@ The registry used for each anchor is **snapshotted** per `(shipment, DocType)`, 
 registry never orphans documents that are already anchored: `ComplianceEngine` resolves the registry
 that actually holds each anchor through the core, and in-flight shipments keep settling.
 
-### 3.4 Shipment lifecycle (state machine)
+### 3.4 Credit & custody lifecycle (two state dimensions)
 
 ```
-  createOrder()      createShipment()        openLetterOfCredit()
-  ─────────────► Created ──────────────────► LCFunded ──confirmPickup()──► PickedUp
-                 (importer)   (exporter)       (importer)   EXW ⇒ payout        │
-                                                                                │ confirmVesselLoading(blCid)
-                                                                                ▼
-                        Delivered ◄──── confirmFinalDelivery() ──────────── LoadedOnVessel
-                        (DDP ⇒ payout)      (importer / bank)   (FOB / CIF ⇒ payout)
-                             │
-                             ▼
-                          Settled
+ createOrder()          issueLetterOfCredit()      createShipment()       presentDocuments()
+ ──────────────► OrderPlaced ──────────────► LCIssued ──────────────► Shipped ───────────► Presented
+ (importer       (bank issues +              (named exporter          (beneficiary;
+  applies)        prefunds escrow)            ships; docs anchored)    stipulated set)
+                                                                                            │
+                                                    honorPresentation() (bank examines)     │
+                                                    sight ⇒ pays now · deferred ⇒ maturity  ▼
+                                                                                       Honored
+                                                                                            │
+        Reclaimed ◄── reclaimExpiredLC()        Delivered ◄── confirmFinalDelivery() ───────┤
+      (expired, unused                          (importer/bank; title released)             │
+       credit → bank)                                  │                                    │
+                                                       ▼                                    │
+                                                    Settled ◄───────────────────────────────┘
+                                              (honored/paid AND delivered)
 
-  LCFunded + deadline passed + never shipped:  reclaimExpiredLC() ──► Reclaimed
+ custody (goods):  AtExporter ─confirmPickup─► PickedUp ─confirmVesselLoading─► OnVessel ──► Delivered
+ risk (Incoterm):  EXW → importer at pickup · FOB/CIF → importer on vessel · DDP → importer at delivery
 ```
 
-- `Settled` = payout complete **and** title transferred.
-- **Title and payment timing are distinct:** payout/risk transfer follows the Incoterm table below, but the title NFT is transferred to the importer only at `confirmFinalDelivery` (or bank `forceFinalizeDelivery`). For EXW/FOB/CIF, the L/C may already have paid before title is released; the phase becomes `Settled` after delivery.
-- `Reclaimed` is terminal: the importer's escrow is returned because the exporter never shipped.
-- `riskHolder` starts at the exporter and moves to the importer at each Incoterm's risk-transfer
-  milestone: **EXW** at `confirmPickup`, **FOB/CIF** at `confirmVesselLoading`, **DDP** at
-  `confirmFinalDelivery`.
+- `Settled` = the credit has paid **and** custody is delivered. Payment and delivery can happen in
+  either order; whichever completes last settles the trade.
+- `Reclaimed` is terminal: an expired, **unused** credit returns its escrow to the issuing bank. If
+  the beneficiary had shipped but never presented, the escrowed title returns to the exporter.
+- A recorded presentation is "use": the credit can then only be honored (or refused off-chain),
+  never reclaimed.
+- Deferred credits: `honor` schedules `maturityAt = honoredAt + deferredDays`; anyone can call
+  `drawDeferredPayment` at maturity.
 
-### 3.5 Incoterm settlement & document matrix
+### 3.5 Incoterm documentary matrix
 
-`ComplianceEngine.requiredMask(term, phase)` is evaluated on every transition and again at payout.
+`ComplianceEngine` derives two document sets from the Incoterm: the **custody gates**
+(`requiredMask(term, custody)`, evaluated at pickup/loading/delivery) and the **stipulated
+presentation set** (`presentationMask(term)` — the same full requirement per Incoterm, recorded on
+the credit at issuance and re-examined by the bank before honoring).
 
-| Incoterm | Risk transfers | Payout trigger | Mandatory documents at payout |
-|----------|----------------|----------------|-------------------------------|
-| **EXW** | at pickup | `confirmPickup` → `PickedUp` | Invoice + PackingList |
-| **FOB** | on vessel | `confirmVesselLoading` → `LoadedOnVessel` | + Inspection + BillOfLading |
-| **CIF** | on vessel | `confirmVesselLoading` → `LoadedOnVessel` | + Inspection + BillOfLading + Insurance |
-| **DDP** | at destination | `confirmFinalDelivery` → `Delivered` | + Inspection + BillOfLading + CertificateOfOrigin + CustomsClearance **and duty paid** |
+| Incoterm | Risk transfers | Stipulated presentation set (bank examines) |
+|----------|----------------|---------------------------------------------|
+| **EXW** | at pickup | Invoice + PackingList + BillOfLading |
+| **FOB** | on vessel | + InspectionCertificate |
+| **CIF** | on vessel | + InspectionCertificate + InsuranceCertificate |
+| **DDP** | at destination | + InspectionCertificate + BillOfLading + CertificateOfOrigin + CustomsClearance **and duty paid** |
 
-Payout is **100 % of the escrowed L/C amount**, transferred atomically to the exporter under a
-strict checks-effects-interactions pattern guarded by `nonReentrant`.
+Honor transfers **100 % of the escrowed credit** to the beneficiary under a strict
+checks-effects-interactions pattern guarded by `nonReentrant` (the escrow was prefunded by the bank
+at issuance, so the undertaking is deterministic).
 
 ### 3.6 End-to-end flow
 
 ```
-Importer   createOrder(exporter, term, lcAmount, deadline)
-Exporter   createShipment(orderId, invoiceCID, packingCID)      → title NFT minted (escrow)
-Importer   openLetterOfCredit(id)                                → TradeUSD escrowed
+Importer   createOrder(exporter, term, lcAmount, deadline, sight|deferred)   → application (no funds move)
+Bank       issueLetterOfCredit(orderId)                                     → TradeUSD escrowed BY THE BANK,
+                                                                            documentary terms recorded → operative
+Exporter   createShipment(orderId, invoiceCID, packingCID)                  → only after issuance; title NFT minted (escrow)
 Verifier   anchorDocument(id, CertificateOfOrigin | Inspection | Insurance | Clearance, cid)
-Logistics  confirmPickup(id)
-Logistics  confirmVesselLoading(id, blCid)                       → anchors B/L, sets title URI
-Exporter   payCustomsDuty(id, amount)   (DDP; 0 allowed)
-Importer   confirmFinalDelivery(id)                              → transfers title, DDP payout
-Importer/Bank/Admin  reclaimExpiredLC(id)                        → after deadline, if never shipped
-Bank       forceFinalizeDelivery(id)                             → if the importer withholds
+Logistics  confirmPickup(id)                          → custody; EXW risk transfer (no payment)
+Logistics  confirmVesselLoading(id, blCid)            → anchors B/L, sets title URI; FOB/CIF risk (no payment)
+Exporter   payCustomsDuty(id, amount)   (DDP; 0 allowed) — before the bank honors
+Exporter   presentDocuments(id)                       → records the presentation (compliance-checked, pre-expiry)
+Bank       honorPresentation(id)                      → examines; sight pays now, deferred schedules maturity
+Anyone     drawDeferredPayment(id)                    → after maturity (deferred credits)
+Importer   confirmFinalDelivery(id)                   → releases title; Settled when paid
+Importer/Bank/Admin  reclaimExpiredLC(orderId)        → expired UNUSED credit returns to the issuing bank
+Bank       forceFinalizeDelivery(id)                  → if the importer withholds after loading
 ```
 
 ## 4. Repository Structure
@@ -205,29 +229,29 @@ Bank       forceFinalizeDelivery(id)                             → if the impo
 ├── contracts/
 │   ├── TradeChainCore.sol              # coordinator, AccessControl, single entry point
 │   ├── core/
-│   │   ├── ShipmentTracker.sol         # orders, shipments, phase/milestones + e-B/L ERC-721
+│   │   ├── ShipmentTracker.sol         # applications/trades, credit phase × custody + e-B/L ERC-721
 │   │   ├── DocumentRegistry.sol        # CID anchors + verification status
 │   │   ├── ComplianceEngine.sol        # Incoterm-aware required-document rules
-│   │   └── LetterOfCredit.sol          # escrow, settlement, duty, reclaim
+│   │   └── LetterOfCredit.sol          # bank-issued credit: escrow, presentation honor, duty, reclaim
 │   ├── tokens/
 │   │   └── TradeUSD.sol                # ERC-20 stablecoin (role-gated mint)
 │   ├── libraries/TradeTypes.sol        # shared enums/structs
 │   └── mocks/MaliciousReentrancy.sol   # adversarial settlement token (tests only)
-├── test/                               # 97-test Hardhat suite
+├── test/                               # 130-test Hardhat suite
 │   ├── helpers/fixture.js
 │   ├── Order.test.js · DocumentRegistry.test.js · ComplianceEngine.test.js
 │   ├── Incoterms.e2e.test.js · Neutrality.test.js · AccessControl.test.js
 │   ├── RegistrySwap.test.js · Modules.test.js · Reentrancy.test.js · Tokens.test.js · Views.test.js
 ├── scripts/
 │   ├── deploy.js                       # deploy + wire the six contracts + roles
-│   ├── seed-demo.js                    # drive a full EXW→FOB→CIF→DDP demo
+│   ├── seed-demo.js                    # drive the credit workflow: issue → ship → present → honor → deliver
 │   ├── verify.js                       # Etherscan verification helper
 │   ├── ipfs-add.js                     # upload to a role's kubo node → CIDv1
 │   └── ipfs-pin.js                     # keep a counterparty's own copy of a CID
 ├── dapp/                               # React (Vite) + ethers v6 + MetaMask dashboard
 │   └── src/ipfs.js · src/App.jsx       # upload + document-viewer (retrieve by CID from a node)
 ├── ui/                                 # single-file HTML/JS console (no build step)
-│   └── index.html                      # lifecycle stepper, flow guide, all workflow/admin actions
+│   └── index.html                      # credit/custody stepper, flow guide, all workflow/admin actions
 ├── docs/
 │   ├── FRONTENDS.md                    # MetaMask setup, account/network behavior, troubleshooting
 │   ├── ARCHITECTURE.md · DESIGN_DECISIONS.md · SECURITY.md
@@ -268,8 +292,8 @@ Bank       forceFinalizeDelivery(id)                             → if the impo
 ```bash
 npm install
 npx hardhat compile
-npx hardhat test                     # 97 passing
-npx hardhat coverage                 # 100 % stmts · 93.88 % branch · 100 % funcs · 100 % lines
+npx hardhat test                     # 130 passing
+npx hardhat coverage                 # 100 % stmts · 98.76 % branch · 100 % funcs · 100 % lines
 npm run gas                          # optional gas report
 ```
 
@@ -299,6 +323,10 @@ npx hardhat run scripts/verify.js  --network sepolia
 npx hardhat node                                              # terminal 1
 npx hardhat run scripts/deploy.js --network localhost         # copy the core address
 cd dapp && npm install && npm run dev                         # terminal 2 → http://localhost:5173
+
+A step-by-step **multi-account simulation of the whole L/C workflow** (application → bank issuance
+→ shipment → presentation → honor → delivery, plus deferred maturity and expiry reclaim) is in
+[`docs/FRONTENDS.md`](./docs/FRONTENDS.md).
 ```
 
 Paste the `TradeChainCore` address and click **Connect MetaMask / Load**. MetaMask prompts for
@@ -309,9 +337,9 @@ normally read-only). See [`dapp/README.md`](./dapp/README.md) and the [frontend 
 
 ### Plain HTML console (`ui/`) — no build step
 
-A single-file dashboard that walks the **whole application flow**: lifecycle stepper, a per-Incoterm
-flow guide ticked off against on-chain state, document table with validity/issuer/CID, L/C and
-title-NFT viewers, and every workflow/admin action (including `setDocumentRegistry` and
+A single-file dashboard that walks the **whole credit workflow**: credit/custody stepper, a
+per-Incoterm flow guide ticked off against on-chain state, document table with validity/issuer/CID,
+L/C viewer (issuing bank, beneficiary, presentation/honor state, maturity), title-NFT viewer, and
 `setModuleRole`).
 
 ```bash
@@ -351,6 +379,11 @@ Deployed and **source-verified** on **Ethereum Sepolia** (chainId 11155111) on 2
 six contracts; record in [`deployments/sepolia.json`](./deployments/sepolia.json). Every contract's
 source is published on Etherscan (append `#code` to each address).
 
+> **Note (25 November 2026).** This deployment predates the bank-issued documentary-credit rework
+> (application → issuance → shipment → presentation → honor): the on-chain code at these addresses
+> still implements the earlier importer-funded escrow with milestone payouts. It is kept as
+> deployment/verification evidence; redeploy to demo the new workflow.
+
 | Contract | Address |
 |----------|---------|
 | `TradeChainCore` | [`0x0372C1F622c6b46919a70a89EF85306565Eb98C5`](https://sepolia.etherscan.io/address/0x0372C1F622c6b46919a70a89EF85306565Eb98C5#code) |
@@ -387,8 +420,8 @@ npx solhint "contracts/**/*.sol"
 ```
 
 - [ ] `compile` → `Compiled 39 Solidity files successfully`
-- [ ] `test` → `97 passing`
-- [ ] `coverage` → **100 % statements · 93.88 % branch · 100 % functions · 100 % lines** (mocks excluded)
+- [ ] `test` → `130 passing`
+- [ ] `coverage` → **100 % statements · 98.76 % branch · 100 % functions · 100 % lines** (mocks excluded)
 - [ ] `solhint` → no errors
 
 ### B. Local end-to-end demo (all four Incoterms)
@@ -399,10 +432,12 @@ npx hardhat run scripts/deploy.js --network localhost         # terminal 2
 npx hardhat run scripts/seed-demo.js --network localhost
 ```
 
-- [ ] `seed-demo` prints the `EXW`, `FOB`, `CIF`, `DDP` flows and ends with
-      `All four Incoterm flows completed.`
-- [ ] For each flow the final line is `title NFT owner: 0x…` = the importer's address
-- [ ] `EXW` settles at `PickedUp`, `FOB`/`CIF` at `LoadedOnVessel`, `DDP` at `Delivered`
+- [ ] `seed-demo` prints the `EXW`, `FOB`, `CIF`, `DDP` (sight) and `CIF` (deferred +3d) flows plus an
+      expired-credit reclaim, ending with `All documentary-credit flows completed.`
+- [ ] Each flow shows: application → L/C issued by the **bank** (escrow funded) → shipment → documents
+      → custody (no payment at milestones) → presentation → examination/honor → delivery → `Settled`
+- [ ] The deferred flow schedules the payout and draws it after maturity; the reclaim returns the
+      funds to the issuing bank
 
 ### C. React DApp / HTML console
 
@@ -413,11 +448,15 @@ python -m http.server 8090                # → http://127.0.0.1:8090/ui/index.h
 ```
 
 - [ ] Paste the local `TradeChainCore` address → **Connect MetaMask / Load** (or connect to local RPC)
-- [ ] Panel 1 → `createOrder` then `createShipment`
-- [ ] Panel 2 → `openLetterOfCredit`, anchor certificates, upload a file (CID fills in)
-- [ ] Panel 3 → milestones; **Shipment viewer** shows phase + document flags
-- [ ] **Document viewer** → open an anchored CID from the node that holds it
-- [ ] `ui/index.html` → the lifecycle stepper advances and the flow guide ticks each step off
+- [ ] As the **importer**: `createOrder` (application with sight/deferred terms)
+- [ ] As the **bank**: approve TradeUSD, then `issueLetterOfCredit` (escrow funded by the bank)
+- [ ] As the **exporter**: `createShipment` (refused before issuance), then `presentDocuments`
+- [ ] As the **verifier/logistics**: anchor certificates, `confirmPickup`, `confirmVesselLoading`
+- [ ] As the **bank**: `honorPresentation`; as the **importer**: `confirmFinalDelivery` → `Settled`
+- [ ] **Shipment viewer** shows phase/custody + document flags; **Document viewer** opens a CID
+- [ ] `ui/index.html` → the credit/custody stepper advances and the flow guide ticks each step off
+
+A full click-by-click, multi-account walkthrough is in [`docs/FRONTENDS.md`](./docs/FRONTENDS.md).
 
 ### D. Off-chain documents (per-role IPFS)
 
@@ -452,29 +491,32 @@ npx hardhat run scripts/verify.js --network sepolia
 
 | Risk | Attack / failure scenario | Mitigation | Validation |
 |------|---------------------------|------------|------------|
-| **Documentary fraud** | Payout without a mandatory document; CID replaced after funding | Per-milestone `requireCompliant`; `DocumentRegistry` anchor-once-then-lock | Negative tests assert `MissingMandatoryDocument` / `DocumentLocked` |
+| **Documentary fraud** | Honor without a mandatory document; CID replaced after issuance | Presentation compliance-checked, re-examined inside `LetterOfCredit.honor`; `DocumentRegistry` anchor-once-then-lock | Negative tests assert `MissingMandatoryDocument` / `DocumentLocked` |
+| **Shipping without a credit** | The exporter ships before the bank has issued an operative credit | `createShipment` requires phase `LCIssued` and the named beneficiary | `Order.test.js`, `AccessControl.test.js` |
 | **Unauthorized attestation** | Exporter self-signs a certificate | Certificates anchor only through the per-`DocType` role check | Access-control matrix test |
+| **Unauthorized honor** | A non-bank (or the beneficiary) honors its own presentation | `honorPresentation` is bank-gated; the module re-checks compliance independently | `AccessControl.test.js`, `Modules.test.js` |
 | **Unauthorized title transfer** | Holder endorses/moves the e-B/L before final delivery | `ShipmentTracker._update` rejects every public ERC-721 transfer; only the core can `transferTitle` | `Tokens.test.js` (public `transferFrom` reverts) |
-| **Reentrancy** | Malicious ERC-20 callback / ERC-721 receiver hook re-enters settlement | `nonReentrant` on `LetterOfCredit.settle`/`refund` + strict CEI + `SafeERC20` | `Reentrancy.test.js` (adversarial token pays out exactly once) |
-| **Settlement stall** | Importer withholds delivery; exporter never ships | Deadline reclaim (importer/bank/admin); either **bank** can `forceFinalizeDelivery` | `Neutrality.test.js` |
-| **Revoked attestation** | Verifier revokes a relied-upon certificate | `DocumentRegistry.revoke` clears `verified`; checked at compliance time | `DocumentRegistry` revocation tests |
-| **Unauthorized milestone** | Wrong role advances the shipment / mints tokens | `onlyRole` + per-shipment importer/exporter checks | `AccessControl.test.js` |
+| **Reentrancy** | Malicious ERC-20 callback / ERC-721 receiver hook re-enters settlement | `nonReentrant` on `LetterOfCredit.honor`/`drawDeferred`/`reclaim` + strict CEI + `SafeERC20` | `Reentrancy.test.js` (adversarial token pays out exactly once) |
+| **Settlement stall** | Importer withholds delivery; bank stalls a deferred payout; exporter never ships | `forceFinalizeDelivery` (bank); permissionless `drawDeferredPayment` at maturity; expired unused credits reclaim to the issuing bank | `Neutrality.test.js` |
+| **Revoked attestation** | Verifier revokes a relied-upon certificate | `DocumentRegistry.revoke` clears `verified`; presentation requires validity and the bank re-examines | `DocumentRegistry` revocation tests |
+| **Stranded duty escrow** | Duty escrowed after the proceeds were released would never reach the treasury | `payCustomsDuty` reverts `LCAlreadySettled`; DDP duty must be paid before honor | `AccessControl.test.js` |
+| **Unauthorized milestone** | Wrong role advances custody / mints tokens | `onlyRole` + per-trade beneficiary/importer checks | `AccessControl.test.js` |
 | **Stablecoin inflation** | Anyone mints `TradeUSD` | `mint` is `MINTER_ROLE`-gated (core/admin only) | `Tokens.test.js` |
 | **Forged compliance via a swapped registry** | A look-alike "registry" that answers `isValid == true` is swapped in, releasing the escrow with no documents | `setDocumentRegistry` requires a registry bound to this core *and* matching the deployment-time runtime codehash; only the admin or `ROLE_REGISTRY_ADMIN` may swap | `RegistrySwap.test.js` (`RegistryInvalidCode`) |
-| **Orphaned documents after a registry swap** | Replacing the registry would hide previously anchored documents and stall in-flight shipments | The core snapshots the registry per `(shipment, DocType)`; `ComplianceEngine` resolves the registry that holds each anchor | `RegistrySwap.test.js` ("routes new anchors … while old anchors keep resolving") |
+| **Orphaned documents after a registry swap** | Replacing the registry would hide previously anchored documents and stall in-flight trades | The core snapshots the registry per `(trade, DocType)`; `ComplianceEngine` resolves the registry that holds each anchor | `RegistrySwap.test.js` ("routes new anchors … while old anchors keep resolving") |
 
 ## 10. Testing & Coverage
 
 | Category | Representative scenario | Evidence |
 |----------|-------------------------|----------|
-| Happy-path E2E | Full flow per Incoterm incl. certificate anchors and the DDP clearance gate | Payout at the exact milestone; title transfers to the importer |
-| Negative & boundary | Omit each required document; insufficient allowance; empty CID; duplicate anchoring; unauthorized anchors | Deterministic custom-error reverts |
-| Neutrality & timeout | Reclaim only after expiry; force-finalize; per-bank release | No single party can stall settlement |
-| Access control | Exhaustive role × function matrix | `Unauthorized` / `AccessControlUnauthorizedAccount` |
-| Modules | Internal guards reached directly (funding/duty/settlement ordering, reclaim window) | `Modules.test.js` |
-| Security | Adversarial settlement token; Slither + coverage in CI | Single payout; no High findings |
+| Happy-path E2E | Full credit flow per Incoterm (sight and deferred) incl. certificate anchors, the DDP clearance/duty gate and delivery | Honor pays the beneficiary; title transfers to the importer; `Settled` |
+| Negative & boundary | Ship before issuance; present before expiry/with a missing document; honor without duty; draw before maturity; insufficient allowance; empty CID; duplicate anchoring | Deterministic custom-error reverts |
+| Neutrality & timeout | Reclaim (to the bank) only after expiry and only if unused; force-finalize; permissionless maturity draw | No single party can stall settlement |
+| Access control | Exhaustive role × function matrix (bank issues/honors; only the beneficiary ships/presents) | `Unauthorized` / `AccessControlUnauthorizedAccount` |
+| Modules | Internal guards reached directly (issuance/presentation/honor/draw/reclaim ordering, duty forwarding, reclaim window) | `Modules.test.js` |
+| Security | Adversarial settlement token (sight honor and deferred draw); Slither + coverage in CI | Single payout; no High findings |
 
-Current result: **97 tests passing · 100 % statements · 93.88 % branches · 100 % functions ·
+Current result: **130 tests passing · 100 % statements · 98.76 % branches · 100 % functions ·
 100 % lines** (mocks excluded via `.solcover.js`).
 
 ## 11. CI / Static Analysis
@@ -487,9 +529,10 @@ security criteria and its report is retained as a build artifact.
 
 | Phase | Activities | Deliverable | Status |
 |-------|------------|-------------|--------|
-| **Phase 1** | Develop the six contracts + tests | Compiling, tested suite | ✅ done (97 tests) |
-| **Phase 2** | Security review, adversarial tests, coverage | ≥ 90 % branch coverage, Slither report | ✅ done (100 % stmts / 93.88 % branch) |
+| **Phase 1** | Develop the six contracts + tests | Compiling, tested suite | ✅ done (130 tests) |
+| **Phase 2** | Security review, adversarial tests, coverage | ≥ 90 % branch coverage, Slither report | ✅ done (100 % stmts / 98.76 % branch) |
 | **Phase 3** | Sepolia deploy + verify, DApp + flow console, report | Verified contracts, DApp, report | ✅ done **deploy + verify done · report drafted** (`CSIT5760_Final_Project_Report_21232072.docx`) |
+| **Phase 4** | Bank-issued documentary-credit rework (order → issuance → shipment → presentation → honor) | Reworked contracts, tests, UIs, scripts, docs; UI-simulated multi-account walkthrough | ✅ done (this change; see `CHANGES.md` and `TODO.md`) |
 
 Progress log: see `git log --oneline` and [`CHANGES.md`](./CHANGES.md).
 

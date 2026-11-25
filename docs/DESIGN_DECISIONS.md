@@ -27,16 +27,26 @@ design-review questions; items marked **[Pn]** respond to the proposal feedback 
 | D19 | **`ShipmentNFT` merged into `ShipmentTracker`** | Separate ERC-721 contract | The shipment record and its title share one identity (`tokenId == shipmentId`); merging removes duplicated existence checks and lets `_update` close the ERC-721 transfer surface (the separate token left `transferFrom` open, contradicting the restricted-title design). |
 | D20 | **Module access control mounted on `TradeChainCore`** | Each module hard-codes `msg.sender == core` | Every companion grants its `DEFAULT_ADMIN_ROLE` and `CONTROLLER_ROLE` to the core at construction; the core administers them via `setModuleRole`. One authority, and a module writer can be revoked without redeploying. |
 | D21 | **Swappable `DocumentRegistry`** | Hard-wired registry address | The admin or `ROLE_REGISTRY_ADMIN` can replace the registry. Two guards keep it safe: the replacement must be bound to this core and its runtime code must match the deployment-time registry (a look-alike could otherwise forge `isValid`). Anchors snapshot their registry, so a swap never orphans in-flight documents. |
+| D22 | **Bank-issued documentary credit: the bank issues and prefunds the escrow; the importer only applies** [TODO rework] | Importer-funded escrow (the old `openLetterOfCredit`) | A documentary credit is the bank's undertaking, not a buyer escrow. `createOrder` records the application (beneficiary, Incoterm, sight/deferred terms); `issueLetterOfCredit(orderId)` is bank-only and pulls the credit amount from the bank, so honor is deterministic and the importer never needs settlement tokens. |
+| D23 | **One id per trade: the order/application and its trade record are born together** (`orderId == shipmentId == tokenId`) | Keep separate order and shipment ids; issue the credit against the order id | The credit must exist before the goods do, so the application opens the trade record in `OrderPlaced` and the exporter's `ship` merely advances it. One id keeps the L/C, the compliance checks, the title token and the UI aligned. |
+| D24 | **Two state dimensions: credit `Phase` × goods `Custody`** | Single linear phase (the old design paid at Incoterm milestones) | Payment follows the credit (presented → honored → paid), custody follows the goods (pickup → vessel → delivery), and they converge on `Settled` only when both are complete. Risk transfer stays Incoterm-based (EXW pickup, FOB/CIF vessel, DDP delivery) but never triggers payment. |
+| D25 | **Presentation + bank examination instead of milestone payout** [TODO rework] | Pay at the risk-transfer milestone | The exporter records a presentation of the stipulated documents (`presentDocuments`, compliance-checked and pre-expiry); the bank examines (`honorPresentation`, re-checked inside the module) and honors: sight pays immediately, deferred schedules `maturityAt = honoredAt + deferral`, drawn permissionlessly. |
+| D26 | **The stipulated documentary set is the Incoterm's full requirement** (`presentationMask`) | Let the bank supply an arbitrary document list at issuance | The set is derived from the same `ComplianceEngine` rules that gate custody, so the credit's terms and the on-chain examination can never drift apart; it is recorded on the L/C for transparency. |
+| D27 | **Expired, unused credits return to the issuing bank** [TODO rework] | Refund the importer | The importer never funded the escrow. `reclaimExpiredLC` refunds the bank; if the beneficiary had shipped but never presented, the escrowed title returns to the exporter with the goods. A presented credit is "used": it can only be honored, never reclaimed. |
 
 ## Consequences / trade-offs
 
-- **Trusted verifier.** Verifiers are trusted to have validated the off-chain content before
-  anchoring (trusted-oracle model).
+- **Trusted verifier and trusted examiner.** Verifiers are trusted to have validated the off-chain
+  content before anchoring (trusted-oracle model); the bank is trusted to examine documents in the
+  real (legal) sense — the chain only proves the stipulated slots are anchored and currently valid.
 - **Stablecoin dependency.** The core trusts the injected ERC-20; a malicious token is contained by
   `nonReentrant`/CEI but could censor transfers.
 - **One bank role.** The demo collapses issuing/advising into a single `ROLE_BANK`; production would
   separate them (and could use multisigs).
 - **Certificate of origin by the exporter.** A simplification; in practice a chamber of commerce or
   authority issues it.
-- **Same-block deadline edge.** `createOrder` requires `deadline > block.timestamp`; the exporter
-  must accept before the deadline (re-checked in `createShipment`).
+- **Same-block deadline edge.** `createOrder` requires `deadline > block.timestamp`; the beneficiary
+  must ship and present before the deadline (both re-checked on-chain).
+- **D3 superseded.** "Buyer opens an Order, then the Seller creates the Shipment" still holds, but
+  the shipment record now opens with the order (D23) and shipping additionally requires an issued
+  credit (D22).
