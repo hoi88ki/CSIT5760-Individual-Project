@@ -126,31 +126,33 @@
   <section id="shipmentOverview">
     <h2>1 · Shipment overview — lifecycle, viewer &amp; full flow</h2>
     <div class="row">
-      <div style="max-width:180px"><label>Shipment id</label><input id="shipId" value="1" /></div>
-      <div style="max-width:180px"><label>Incoterm (for a not-yet-created shipment)</label>
+      <div style="max-width:230px"><label>Shipment id</label><input id="shipId" value="1" /></div>
+      <div style="max-width:230px"><label>Incoterm (if not-yet-created shipment)</label>
         <select id="term"><option>EXW</option><option>FOB</option><option>CIF</option><option>DDP</option></select>
       </div>
       <div style="max-width:130px;align-self:flex-end"><button id="btnRefresh" class="primary">Refresh shipment</button></div>
       <div style="flex:1;align-self:flex-end"><span class="hint">The viewer, lifecycle and flow guide below all update for this shipment id.</span></div>
     </div>
-    <h3>Shipment lifecycle</h3>
+    <h3>Credit &amp; custody lifecycle</h3>
     <div id="stepper" class="steps"></div>
     <div class="kv" id="flowMeta"></div>
     <div class="kv" id="shipmentView"></div>
     <p class="hint">
-      Risk transfer and payout: <b>EXW</b> at pickup · <b>FOB/CIF</b> on vessel loading ·
-      <b>DDP</b> at final delivery (after clearance + duty). The title NFT is released separately at final delivery.
+      The issuing bank honors a complying presentation — <b>sight</b> pays on examination,
+      <b>deferred</b> pays at maturity — not at an Incoterm milestone. Risk still follows the
+      Incoterm: <b>EXW</b> at pickup · <b>FOB/CIF</b> on vessel loading · <b>DDP</b> at final
+      delivery. The title NFT is released separately at final delivery.
     </p>
     <div class="overview-columns">
       <div>
-        <h3>Linked order</h3><div class="kv" id="orderView">—</div>
+        <h3>Linked application (order)</h3><div class="kv" id="orderView">—</div>
         <h3>Letter of credit &amp; duty</h3><div class="kv" id="lcView">—</div>
         <h3>Document of title (e-B/L NFT)</h3><div class="kv" id="nftView">—</div>
       </div>
       <div>
         <h3>Whole trade flow · responsible role and progress</h3>
         <ol class="guide" id="guide"></ol>
-        <p class="hint">Completed steps are checked from on-chain state. The highlighted next step shows the normal path; bank force-finalization and expired-L/C reclaim are alternatives.</p>
+        <p class="hint">Completed steps are checked from on-chain state. The highlighted next step shows the normal path; the deferred-maturity draw, bank force-finalization and expired-credit reclaim are alternatives.</p>
       </div>
     </div>
   </section>
@@ -164,7 +166,7 @@
           <thead><tr><th>DocType</th><th>Anchored by</th><th>Valid</th><th>Issuer</th><th>CID</th></tr></thead>
           <tbody></tbody>
         </table>
-        <p class="hint">Required set for this Incoterm × phase is marked with ★. Revoked or missing documents block the payout.</p>
+        <p class="hint">★ marks the credit's <b>stipulated presentation set</b> for this Incoterm — what the bank examines before honoring. Revoked or missing documents block the presentation and the payout.</p>
       </div>
       <div>
         <label>DocType to anchor</label>
@@ -185,10 +187,10 @@
   </section>
 
   <div class="grid3">
-    <!-- 5. order & shipment ------------------------------------------------ -->
+    <!-- 5. order & L/C ----------------------------------------------------- -->
     <section>
-      <h2>3 · Create order → shipment</h2>
-      <label>Exporter address</label><input id="exporter" placeholder="0x…" />
+      <h2>3 · Apply for credit → bank issues → ship</h2>
+      <label>Beneficiary (exporter) address</label><input id="exporter" placeholder="0x…" />
       <div class="row">
         <div><label>Incoterm</label>
           <select id="newTerm"><option value="0">EXW</option><option value="1">FOB</option><option value="2">CIF</option><option value="3">DDP</option></select>
@@ -196,19 +198,31 @@
         <div><label>L/C amount (tUSD)</label><input id="lcAmount" value="100000" /></div>
       </div>
       <div class="row">
+        <div><label>Payment term</label>
+          <select id="newPaymentTerm"><option value="0">Sight</option><option value="1">Deferred</option></select>
+        </div>
+        <div><label>Deferral (days, Deferred only)</label><input id="deferredDays" value="3" /></div>
+      </div>
+      <div class="row">
         <div><label>Deadline (days)</label><input id="days" value="30" /></div>
         <div><label>Order id</label><input id="shipOrderId" value="1" /></div>
       </div>
       <label>Invoice CID</label><input id="invCid" placeholder="bafy…" />
       <label>Packing-list CID</label><input id="packCid" placeholder="bafy…" />
-      <button id="btnOrder">Importer → createOrder</button>
+      <button id="btnOrder">Importer → createOrder (apply for L/C)</button>
+      <button id="btnIssue">Bank → issueLetterOfCredit (funds the escrow)</button>
       <button id="btnShipment">Exporter → createShipment</button>
-      <button id="btnFund">Importer → openLetterOfCredit</button>
+      <p class="hint">The bank — not the importer — funds the escrow: it needs a TradeUSD allowance for the core
+      (use <b>Approve TradeUSD (max)</b> above while connected as the bank). The named exporter can ship only
+      after the credit is issued and operative.</p>
     </section>
 
-    <!-- 6. milestones ------------------------------------------------------ -->
+    <!-- 6. presentation, honor & milestones -------------------------------- -->
     <section>
-      <h2>4 · Milestones &amp; settlement</h2>
+      <h2>4 · Presentation, examination &amp; custody</h2>
+      <button id="btnPresent">Exporter → presentDocuments</button>
+      <button id="btnHonor">Bank → honorPresentation (examines &amp; honors)</button>
+      <button id="btnDraw">Anyone → drawDeferredPayment (after maturity)</button>
       <label>B/L or AWB CID (anchored by logistics at loading)</label><input id="blCid" placeholder="bafy…" />
       <button id="btnPickup">Logistics → confirmPickup</button>
       <button id="btnLoad2">Logistics → confirmVesselLoading</button>
@@ -218,7 +232,10 @@
       </div>
       <button id="btnDeliver">Importer → confirmFinalDelivery</button>
       <button id="btnForce">Bank → forceFinalizeDelivery</button>
-      <button id="btnReclaim">Importer/Bank/Admin → reclaimExpiredLC</button>
+      <button id="btnReclaim">Importer/Bank/Admin → reclaimExpiredLC (unused credit → bank)</button>
+      <p class="hint">Present only after the stipulated document set (★ below) is anchored and the goods are
+      loaded — the B/L is part of every presentation. The bank re-examines on-chain validity before honoring:
+      sight pays immediately; deferred schedules payment at <code>honoredAt + deferral</code>.</p>
     </section>
 
     <!-- 7. admin ----------------------------------------------------------- -->
@@ -258,7 +275,9 @@
 <script>
 /* ------------------------------------------------------------------ consts */
 const INCOTERMS = ["EXW", "FOB", "CIF", "DDP"];
-const PHASES = ["Created", "LCFunded", "PickedUp", "LoadedOnVessel", "Delivered", "Settled", "Reclaimed"];
+const PAYMENT_TERMS = ["Sight", "Deferred"];
+const PHASES = ["OrderPlaced", "LCIssued", "Shipped", "Presented", "Honored", "Delivered", "Settled", "Reclaimed"];
+const CUSTODY = ["AtExporter", "PickedUp", "OnVessel", "Delivered"];
 const DOCTYPES = ["CommercialInvoice", "PackingList", "CertificateOfOrigin", "InspectionCertificate",
                   "InsuranceCertificate", "BillOfLadingOrAWB", "CustomsClearance"];
 const DOC_ROLE = ["Exporter", "Exporter", "Exporter", "Verifier", "Verifier", "Logistics", "Verifier"];
@@ -278,26 +297,31 @@ const CORE_ABI = [
   "function setDocumentRegistry(address newRegistry)",
   "function setModuleRole(address module, bytes32 role, address account, bool granted)",
   "function mint(address to, uint256 amount)",
-  "function createOrder(address exporter, uint8 term, uint256 lcAmount, uint64 deadline) returns (uint256)",
+  "function createOrder(address exporter, uint8 term, uint256 lcAmount, uint64 deadline, uint8 paymentTerm, uint64 deferredDays) returns (uint256)",
+  "function issueLetterOfCredit(uint256 orderId)",
   "function createShipment(uint256 orderId, string invoiceCID, string packingListCID) returns (uint256)",
-  "function openLetterOfCredit(uint256 id)","function anchorDocument(uint256 id, uint8 docType, string cid)",
+  "function presentDocuments(uint256 id)",
+  "function honorPresentation(uint256 id)",
+  "function drawDeferredPayment(uint256 id)",
+  "function anchorDocument(uint256 id, uint8 docType, string cid)",
   "function payCustomsDuty(uint256 id, uint256 amount)","function confirmPickup(uint256 id)",
   "function confirmVesselLoading(uint256 id, string blCid)","function confirmFinalDelivery(uint256 id)",
-  "function forceFinalizeDelivery(uint256 id)","function reclaimExpiredLC(uint256 id)",
+  "function forceFinalizeDelivery(uint256 id)","function reclaimExpiredLC(uint256 orderId)",
   "function revokeDocument(uint256 id, uint8 docType)",
   "function settlementToken() view returns (address)","function shipmentTracker() view returns (address)",
   "function documentRegistry() view returns (address)","function complianceEngine() view returns (address)",
   "function letterOfCredit() view returns (address)","function orderCount() view returns (uint256)",
   "function shipmentCount() view returns (uint256)",
   "function hasValidDocument(uint256 id, uint8 docType) view returns (bool)",
-  "function requiredDocumentsAt(uint256 id, uint8 phase) view returns (uint8)",
-  "function payoutPhaseOf(uint8 term) view returns (uint8)",
-  "function isCompliant(uint256 id, uint8 phase) view returns (bool)",
+  "function presentationDocuments(uint256 id) view returns (uint8)",
+  "function examinePresentation(uint256 id) view returns (bool ok, uint8 missing)",
+  "function requiredDocumentsAt(uint256 id, uint8 custody) view returns (uint8)",
+  "function isCompliant(uint256 id, uint8 custody) view returns (bool)",
   "function documentRegistryOf(uint256 id, uint8 docType) view returns (address)",
   "function hasRole(bytes32 role, address account) view returns (bool)",
-  "function getOrder(uint256 orderId) view returns (tuple(uint256 id,address importer,address exporter,uint8 term,uint64 deadline,uint256 lcAmount,uint256 shipmentId,bool fulfilled))",
-  "function getShipment(uint256 id) view returns (tuple(uint256 id,uint256 orderId,address exporter,address importer,uint8 term,uint8 phase,uint64 createdAt,uint64 deadline,uint256 lcAmount,address riskHolder))",
-  "function getLC(uint256 id) view returns (tuple(uint256 shipmentId,uint256 amount,bool funded,bool paid,bool reclaimed,uint256 dutyAmount,bool dutyPaid,address dutyPayer))",
+  "function getOrder(uint256 orderId) view returns (tuple(uint256 id,address importer,address exporter,uint8 term,uint8 paymentTerm,uint64 deferredDays,uint64 deadline,uint256 lcAmount))",
+  "function getShipment(uint256 id) view returns (tuple(uint256 id,uint256 orderId,address exporter,address importer,uint8 term,uint8 paymentTerm,uint64 deferredDays,uint8 phase,uint8 custody,uint64 createdAt,uint64 deadline,uint256 lcAmount,address riskHolder))",
+  "function getLC(uint256 id) view returns (tuple(uint256 id,address issuingBank,address beneficiary,uint256 amount,uint8 term,uint64 deferredDays,uint64 issuedAt,uint8 requiredDocs,bool issued,bool presented,uint64 presentedAt,bool honored,uint64 honoredAt,uint64 maturityAt,bool paid,bool reclaimed,uint256 dutyAmount,bool dutyPaid,address dutyPayer))",
 ];
 const TRACKER_ABI = [
   "function name() view returns (string)","function ownerOf(uint256 tokenId) view returns (address)",
@@ -310,7 +334,7 @@ const REGISTRY_ABI = [
   "function getDocument(uint256 id, uint8 docType) view returns (tuple(string cid,address issuer,uint64 timestamp,bool verified))",
   "function DEFAULT_ADMIN_ROLE() view returns (bytes32)",
 ];
-const LOC_ABI = ["function treasury() view returns (address)","function escrowBalance() view returns (uint256)"];
+const LOC_ABI = ["function treasury() view returns (address)","function escrowBalance() view returns (uint256)","function isPresented(uint256 id) view returns (bool)","function isHonored(uint256 id) view returns (bool)"];
 const TOKEN_ABI = ["function approve(address spender, uint256 amount) returns (bool)","function balanceOf(address) view returns (uint256)","function symbol() view returns (string)","function decimals() view returns (uint8)"];
 
 /* ------------------------------------------------------------------ state */
@@ -455,17 +479,18 @@ function stepper(phase, term) {
   PHASES.forEach((p, i) => {
     const el = document.createElement("span");
     el.className = "step" + (i === phase ? " now" : i < phase ? " done" : "");
-    if (p === "Reclaimed") el.className = "step" + (phase === 6 ? " dead" : "");
-    const notes = { 2: "EXW pays", 3: "FOB/CIF pay", 4: "DDP pays" };
+    if (p === "Reclaimed") el.className = "step" + (phase === 7 ? " dead" : "");
+    const notes = { 0: "awaiting the bank", 1: "bank funded · shippable", 2: "hand over goods", 3: "bank examines", 4: "sight paid / deferred pending" };
     el.textContent = p + (notes[i] ? ` · ${notes[i]}` : "");
     box.appendChild(el);
     if (i < PHASES.length - 2) box.appendChild(Object.assign(document.createElement("span"), { textContent: "→", style: "align-self:center;color:#4a5568" }));
   });
-  const payout = { 0: 2, 1: 3, 2: 3, 3: 4 }[term];
+  const risk = { 0: "pickup", 1: "vessel loading", 2: "vessel loading", 3: "final delivery" }[term];
   $("flowMeta").innerHTML =
     `<div><b>Incoterm</b> ${INCOTERMS[term] ?? "—"}</div>` +
-    `<div><b>Payout &amp; risk-transfer milestone</b> ${PHASES[payout] ?? "—"}</div>` +
-    `<div><b>Title NFT transfers</b> at final delivery (tokenId = shipment id)</div>`;
+    `<div><b>Risk-transfer milestone</b> ${risk ?? "—"}</div>` +
+    `<div><b>Payment</b> on honor of a complying presentation (sight / deferred)</div>` +
+    `<div><b>Title NFT transfers</b> at final delivery (tokenId = trade id)</div>`;
 }
 
 function kv(pairs) {
@@ -483,21 +508,24 @@ async function refresh() {
     $("term").value = INCOTERMS[Number(s.term)];
     stepper(Number(s.phase), Number(s.term));
     $("shipmentView").innerHTML = kv([
-      ["Shipment", `#${s.id}`], ["Phase", PHASES[Number(s.phase)]],
-      ["Exporter", short(s.exporter)], ["Importer", short(s.importer)],
+      ["Trade", `#${s.id}`], ["Phase", PHASES[Number(s.phase)]],
+      ["Custody", CUSTODY[Number(s.custody)]],
+      ["Beneficiary", short(s.exporter)], ["Applicant", short(s.importer)],
+      ["Payment term", PAYMENT_TERMS[Number(s.paymentTerm)] + (Number(s.paymentTerm) === 1 ? ` (+${s.deferredDays}d)` : "")],
       ["Risk holder", short(s.riskHolder)],
       ["Created", new Date(Number(s.createdAt) * 1000).toLocaleString()],
-      ["Deadline", new Date(Number(s.deadline) * 1000).toLocaleString()],
+      ["Credit expires", new Date(Number(s.deadline) * 1000).toLocaleString()],
     ]);
 
-    // order
+    // order (application)
     let orderHtml = "—";
     try {
       const o = await core.getOrder(s.orderId);
       orderHtml = kv([
-        ["id", "#" + o.id], ["importer", short(o.importer)], ["exporter", short(o.exporter)],
-        ["term", INCOTERMS[Number(o.term)]], ["L/C", fmt(o.lcAmount)],
-        ["deadline", new Date(Number(o.deadline) * 1000).toLocaleString()], ["fulfilled", String(o.fulfilled)],
+        ["id", "#" + o.id], ["applicant (importer)", short(o.importer)], ["beneficiary (exporter)", short(o.exporter)],
+        ["term", INCOTERMS[Number(o.term)]], ["payment", PAYMENT_TERMS[Number(o.paymentTerm)] + (Number(o.paymentTerm) === 1 ? ` +${o.deferredDays}d` : "")],
+        ["L/C", fmt(o.lcAmount)],
+        ["deadline", new Date(Number(o.deadline) * 1000).toLocaleString()],
       ]);
     } catch {}
     $("orderView").innerHTML = orderHtml;
@@ -505,8 +533,16 @@ async function refresh() {
     // lc
     const lc = await core.getLC(BigInt(id));
     $("lcView").innerHTML = kv([
-      ["funded", String(lc.funded)], ["paid", String(lc.paid)], ["reclaimed", String(lc.reclaimed)],
-      ["amount", fmt(lc.amount)], ["duty", fmt(lc.dutyAmount) + (lc.dutyPaid ? " (paid)" : " (unpaid)")],
+      ["issuing bank", lc.issuingBank === ethers.ZeroAddress ? "—" : short(lc.issuingBank)],
+      ["beneficiary", lc.beneficiary === ethers.ZeroAddress ? "—" : short(lc.beneficiary)],
+      ["issued", String(lc.issued) + (lc.issued ? ` · ${fmt(lc.amount)} tUSD escrowed` : "")],
+      ["presented", String(lc.presented) + (lc.presented ? ` · ${new Date(Number(lc.presentedAt) * 1000).toLocaleTimeString()}` : "")],
+      ["honored", lc.honored
+        ? (Number(lc.term) === 0 ? "yes · sight paid" : `yes · payable ${new Date(Number(lc.maturityAt) * 1000).toLocaleTimeString()}`)
+        : "no"],
+      ["paid", String(lc.paid)], ["reclaimed", String(lc.reclaimed)],
+      ["stipulated documents", String(lc.requiredDocs) + " (bitmask)"],
+      ["duty", fmt(lc.dutyAmount) + (lc.dutyPaid ? " (paid)" : " (unpaid)")],
       ["duty payer", lc.dutyPayer === ethers.ZeroAddress ? "—" : short(lc.dutyPayer)],
     ]);
 
@@ -532,9 +568,9 @@ async function refresh() {
 async function renderEmpty(idBig) {
   const term = Math.max(0, INCOTERMS.indexOf($("term").value));
   stepper(0, term);
-  $("shipmentView").innerHTML = kv([["Shipment", `#${idBig}`], ["Status", "Not created yet"], ["Next", "Importer creates an order"]]);
-  $("orderView").innerHTML = "no linked order yet";
-  $("lcView").innerHTML = "not funded";
+  $("shipmentView").innerHTML = kv([["Trade", `#${idBig}`], ["Status", "Not applied for yet"], ["Next", "Importer applies for a letter of credit"]]);
+  $("orderView").innerHTML = "no application yet";
+  $("lcView").innerHTML = "not issued";
   $("nftView").innerHTML = "not minted";
   const tb = $("docTable").querySelector("tbody"); tb.innerHTML = "";
   const sel = $("docType"); sel.innerHTML = "";
@@ -549,12 +585,12 @@ async function renderEmpty(idBig) {
     }
   }
   const row = document.createElement("tr");
-  row.innerHTML = `<td colspan="5" style="color:var(--muted)">shipment #${idBig} does not exist yet — create an order and a shipment first</td>`;
+  row.innerHTML = `<td colspan="5" style="color:var(--muted)">trade #${idBig} does not exist yet — apply for a credit first</td>`;
   tb.appendChild(row);
   const steps = [
-    { who: "Importer", what: "createOrder(exporter, " + INCOTERMS[term] + ", amount, deadline)" },
-    { who: "Exporter", what: "createShipment(orderId, invoiceCID, packingListCID) → title NFT minted to the core" },
-    { who: "Importer", what: "openLetterOfCredit(id) → TradeUSD escrowed" },
+    { who: "Importer (applicant)", what: "createOrder(exporter, " + INCOTERMS[term] + ", amount, deadline, sight/deferred)" },
+    { who: "Issuing bank", what: "issueLetterOfCredit(orderId) → TradeUSD escrowed by the bank, beneficiary + documentary terms recorded" },
+    { who: "Exporter (beneficiary)", what: "createShipment(orderId, invoiceCID, packingListCID) → title NFT minted to the core" },
   ];
   $("guide").innerHTML = steps.map((st, i) =>
     `<li class="${i === 0 ? "next" : ""}"><span class="who">${st.who}</span> — ${st.what}</li>`).join("");
@@ -563,7 +599,7 @@ async function renderEmpty(idBig) {
 
 async function renderDocs(id, term, phase) {
   const tb = $("docTable").querySelector("tbody"); tb.innerHTML = "";
-  const mask = Number(await core.requiredDocumentsAt(BigInt(id), phase));
+  const mask = Number(await core.presentationDocuments(BigInt(id)));
   const sel = $("docType"); sel.innerHTML = "";
   const idBig = BigInt(id);
   for (let i = 0; i < DOCTYPES.length; i++) {
@@ -573,7 +609,7 @@ async function renderDocs(id, term, phase) {
     const rec = await reg.getDocument(idBig, i);
     const tr = document.createElement("tr");
     tr.innerHTML =
-      `<td>${DOCTYPES[i]}${(mask >> i) & 1 ? '<span class="pill">★ required</span>' : ""}</td>` +
+      `<td>${DOCTYPES[i]}${(mask >> i) & 1 ? '<span class="pill">★ stipulated</span>' : ""}</td>` +
       `<td>${DOC_ROLE[i]}</td>` +
       `<td style="color:${valid ? "var(--ok)" : "var(--bad)"}">${valid ? "valid" : (rec.cid ? "revoked" : "missing")}</td>` +
       `<td>${rec.issuer && rec.issuer !== ethers.ZeroAddress ? short(rec.issuer) : "—"}</td>` +
@@ -585,39 +621,49 @@ async function renderDocs(id, term, phase) {
       sel.appendChild(o);
     }
   }
-  const compliant = await core.isCompliant(BigInt(id), phase);
+  const [ok, missing] = await core.examinePresentation(idBig);
   const row = document.createElement("tr");
-  row.innerHTML = `<td colspan="5" style="color:${compliant ? "var(--ok)" : "var(--warn)"}">
-    compliance at ${PHASES[phase]}: ${compliant ? "all required documents valid" : "not compliant yet"}</td>`;
+  row.innerHTML = `<td colspan="5" style="color:${ok ? "var(--ok)" : "var(--warn)"}">
+    examination preview: ${ok ? "the presentation set is complete and verified — the bank may honor" : `not presentable yet — ${DOCTYPES[Number(missing)]} is missing or revoked`}</td>`;
   tb.appendChild(row);
 }
 
 /** The full application flow, ticked off against on-chain state. */
 async function renderGuide(s, lc) {
-  const term = Number(s.term), id = s.id, phase = Number(s.phase);
+  const term = Number(s.term), id = s.id, phase = Number(s.phase), custody = Number(s.custody);
   const docs = {};
   for (let i = 0; i < DOCTYPES.length; i++) docs[i] = await core.hasValidDocument(id, i);
   const steps = [
-    { who: "Importer", what: "createOrder(exporter, " + INCOTERMS[term] + ", amount, deadline)", done: true },
-    { who: "Exporter", what: "createShipment(orderId, invoiceCID, packingListCID) → title NFT minted to the core",
-      done: true },
-    { who: "Importer", what: "openLetterOfCredit(id) → TradeUSD escrowed", done: lc.funded },
+    { who: "Importer (applicant)", what: "createOrder(exporter, " + INCOTERMS[term] + ", amount, deadline, " +
+      PAYMENT_TERMS[Number(s.paymentTerm)].toLowerCase() + ")", done: true },
+    { who: "Issuing bank", what: "issueLetterOfCredit(orderId) → the bank escrows " + fmt(s.lcAmount) +
+      " tUSD and records the beneficiary + documentary terms", done: phase >= 1 },
+    { who: "Exporter (beneficiary)", what: "createShipment(orderId, invoiceCID, packingListCID) → title NFT minted to the core",
+      done: phase >= 2 },
   ];
   if (term !== 0) steps.push({ who: "Verifier", what: "anchorDocument(id, InspectionCertificate)", done: docs[3] });
   if (term === 2) steps.push({ who: "Verifier", what: "anchorDocument(id, InsuranceCertificate)", done: docs[4] });
   if (term === 3) steps.push({ who: "Exporter", what: "anchorDocument(id, CertificateOfOrigin)", done: docs[2] });
-  steps.push({ who: "Logistics", what: "confirmPickup(id)" + (term === 0 ? " → EXW payout + risk transfer" : ""),
-    done: phase >= 2 && phase !== 6 });
+  steps.push({ who: "Logistics", what: "confirmPickup(id)" + (term === 0 ? " → EXW risk transfer" : ""),
+    done: custody >= 1 && phase !== 7 });
   steps.push({ who: "Logistics", what: "confirmVesselLoading(id, blCid) → B/L anchored, URI set" +
-    (term === 1 || term === 2 ? " → payout + risk transfer" : ""), done: phase >= 3 && phase !== 6 });
+    (term === 1 || term === 2 ? " → FOB/CIF risk transfer" : ""), done: custody >= 2 && phase !== 7 });
   if (term === 3) {
     steps.push({ who: "Verifier", what: "anchorDocument(id, CustomsClearance)", done: docs[6] });
-    steps.push({ who: "Exporter", what: "payCustomsDuty(id, amount) — before the payout", done: lc.dutyPaid });
+    steps.push({ who: "Exporter", what: "payCustomsDuty(id, amount) — before the bank honors", done: lc.dutyPaid });
   }
-  steps.push({ who: term === 3 ? "Importer / Bank" : "Importer", what: "confirmFinalDelivery(id) → title to importer" +
-    (term === 3 ? " → DDP payout" : "") + " → Settled", done: phase >= 5 });
-  steps.push({ who: "Importer / Bank / Admin", what: "reclaimExpiredLC(id) — only if it never shipped before the deadline",
-    done: phase === 6 });
+  steps.push({ who: "Exporter (beneficiary)", what: "presentDocuments(id) → the stipulated set is recorded for examination",
+    done: phase >= 3 });
+  steps.push({ who: "Issuing bank", what: "honorPresentation(id) — examines the presentation; sight pays now, deferred schedules maturity",
+    done: phase >= 4 || lc.paid });
+  if (Number(s.paymentTerm) === 1) {
+    steps.push({ who: "Anyone", what: "drawDeferredPayment(id) after maturity → proceeds to the beneficiary",
+      done: lc.paid });
+  }
+  steps.push({ who: "Importer / Bank", what: "confirmFinalDelivery(id) → title to importer → Settled (with a paid credit)",
+    done: phase >= 6 });
+  steps.push({ who: "Importer / Bank / Admin", what: "reclaimExpiredLC(orderId) — expired, unused credit returns to the issuing bank",
+    done: phase === 7 });
   steps.push({ who: "Bank", what: "forceFinalizeDelivery(id) — only if the importer withholds after loading",
     done: false, optional: true });
 
@@ -714,16 +760,28 @@ $("btnGrant").onclick = () => need() && send("grantRoles", () => {
 $("btnSwap").onclick = () => need() && send("setDocumentRegistry", () =>
   core.setDocumentRegistry($("newRegistry").value.trim()));
 
-$("btnOrder").onclick = () => need() && send("createOrder", () =>
-  core.createOrder($("exporter").value.trim(), Number($("newTerm").value),
+$("btnOrder").onclick = () => need() && send("createOrder", async () => {
+  // Base the deadline on the chain clock (a shifted local node would reject wall-clock math).
+  let now = Math.floor(Date.now() / 1000);
+  try { now = Number((await provider.getBlock("latest")).timestamp); } catch {}
+  const tx = await core.createOrder($("exporter").value.trim(), Number($("newTerm").value),
     BigInt($("lcAmount").value) * UNIT,
-    BigInt(Math.floor(Date.now() / 1000) + Number($("days").value) * 86400))
-    .then(async (tx) => { await tx.wait(); $("shipOrderId").value = (await core.orderCount()).toString(); return tx; }));
+    BigInt(now + 1) + BigInt(Number($("days").value) * 86400),
+    Number($("newPaymentTerm").value),
+    Number($("newPaymentTerm").value) === 1 ? BigInt($("deferredDays").value || "3") : 0n);
+  await tx.wait(); $("shipOrderId").value = (await core.orderCount()).toString(); return tx;
+});
+$("btnIssue").onclick = () => need() && send("issueLetterOfCredit", async () => {
+  const tx = await core.issueLetterOfCredit($("shipOrderId").value.trim());
+  await tx.wait(); $("shipId").value = $("shipOrderId").value.trim(); return tx;
+});
 $("btnShipment").onclick = () => need() && send("createShipment", async () => {
   const tx = await core.createShipment($("shipOrderId").value.trim(), $("invCid").value.trim(), $("packCid").value.trim());
   await tx.wait(); $("shipId").value = (await core.shipmentCount()).toString(); return tx;
 });
-$("btnFund").onclick = () => need() && send("openLetterOfCredit", () => core.openLetterOfCredit(shipId()));
+$("btnPresent").onclick = () => need() && send("presentDocuments", () => core.presentDocuments(shipId()));
+$("btnHonor").onclick = () => need() && send("honorPresentation", () => core.honorPresentation(shipId()));
+$("btnDraw").onclick = () => need() && send("drawDeferredPayment", () => core.drawDeferredPayment(shipId()));
 $("btnAnchor").onclick = () => need() && send("anchorDocument", () =>
   core.anchorDocument(shipId(), Number($("docType").value), $("docCid").value.trim()));
 $("btnRevoke").onclick = () => need() && send("revokeDocument", () =>
