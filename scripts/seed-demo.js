@@ -135,8 +135,16 @@ async function runFlow(core, nft, ctx, term, lcAmount, paymentTerm, deferredDays
       console.log(`  maturity reached, proceeds drawn → phase ${Phase[Number(s.phase)]}`);
     } else {
       console.log("  (deferred proceeds remain payable at maturity — advance past maturity to draw)");
+      return;
     }
   }
+
+  // The applicant reimburses the issuing bank on-chain (possible once the proceeds
+  // have been released — sight: at honor; deferred: at maturity).
+  await (await token.connect(importer).approve(dep.letterOfCredit, ethers.MaxUint256)).wait();
+  await (await core.connect(importer).reimburseIssuingBank(orderId)).wait();
+  const lcFinal = await core.getLC(orderId);
+  console.log(`  applicant reimbursed the bank on-chain → reimbursed=${lcFinal.reimbursed}`);
 }
 
 async function main() {
@@ -160,6 +168,8 @@ async function main() {
   }
   for (const holder of [bank, importer, exporter]) {
     await (await token.connect(holder).approve(dep.core, ethers.MaxUint256)).wait();
+    // the LetterOfCredit module pulls the applicant's reimbursement straight to the bank
+    await (await token.connect(holder).approve(dep.letterOfCredit, ethers.MaxUint256)).wait();
   }
 
   const ctx = { exporter, importer, bank, logistics, verifier };

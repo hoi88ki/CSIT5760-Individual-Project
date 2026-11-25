@@ -332,4 +332,53 @@ describe("Incoterm end-to-end flows", function () {
       "InvalidState"
     );
   });
+
+  it("the applicant reimburses the issuing bank on-chain once the proceeds are released", async function () {
+    const env = await loadFixture(fixture);
+    const id = await setup(env, Incoterm.FOB);
+    await toPresentable(env, id);
+    await present(env, id);
+    await honor(env, id); // sight: the bank is out of pocket now
+
+    const bankBefore = await env.token.balanceOf(env.bank.address);
+    const importerBefore = await env.token.balanceOf(env.importer.address);
+
+    // Only the trade's own applicant may reimburse.
+    await expect(
+      env.core.connect(env.outsider).reimburseIssuingBank(id)
+    ).to.be.revertedWithCustomError(env.core, "AccessControlUnauthorizedAccount");
+    await env.core.connect(env.admin).grantRoles([await env.core.ROLE_IMPORTER()], [env.outsider.address]);
+    await expect(env.core.connect(env.outsider).reimburseIssuingBank(id)).to.be.revertedWithCustomError(
+      env.core,
+      "Unauthorized"
+    );
+
+    await env.core.connect(env.importer).reimburseIssuingBank(id);
+
+    expect(await env.token.balanceOf(env.bank.address)).to.equal(bankBefore + LC);
+    expect(await env.token.balanceOf(env.importer.address)).to.equal(importerBefore - LC);
+    const lc = await env.core.getLC(id);
+    expect(lc.reimbursed).to.equal(true);
+    expect(Number(lc.reimbursedAt)).to.be.greaterThan(0);
+  });
+
+  it("reimbursement is refused before the proceeds are released and cannot be repeated", async function () {
+    const env = await loadFixture(fixture);
+    const id = await setup(env, Incoterm.FOB);
+    await toPresentable(env, id);
+    await present(env, id);
+
+    // Presented but not honored: the bank has not paid yet, so nothing is owed.
+    await expect(env.core.connect(env.importer).reimburseIssuingBank(id)).to.be.revertedWithCustomError(
+      env.loc,
+      "NotPaid"
+    );
+
+    await honor(env, id);
+    await env.core.connect(env.importer).reimburseIssuingBank(id);
+    await expect(env.core.connect(env.importer).reimburseIssuingBank(id)).to.be.revertedWithCustomError(
+      env.loc,
+      "AlreadyReimbursed"
+    );
+  });
 });

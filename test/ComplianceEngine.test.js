@@ -73,7 +73,7 @@ describe("ComplianceEngine — Incoterm-aware rules", function () {
     await env.core.connect(env.verifier).anchorDocument(shipmentId, DocType.InsuranceCertificate, CID.insurance);
     // B/L is still missing until loading.
     expect(await env.compliance.isPresentationCompliant(shipmentId, Incoterm.CIF)).to.equal(false);
-    expect(await env.core.isCompliant(shipmentId, Custody.PickedUp)).to.equal(true);
+    expect(await env.compliance.isCompliant(shipmentId, Incoterm.CIF, Custody.PickedUp)).to.equal(true);
 
     await env.core.connect(env.logistics).confirmPickup(shipmentId);
     await env.core.connect(env.logistics).confirmVesselLoading(shipmentId, CID.bl);
@@ -98,20 +98,19 @@ describe("ComplianceEngine — Incoterm-aware rules", function () {
     expect(missing).to.equal(DocType.BillOfLadingOrAWB);
   });
 
-  it("requiredDocumentsAt and presentationDocuments delegate to the shipment's term", async function () {
+  it("requiredForShipment and presentationForShipment resolve the shipment's term", async function () {
     const env = await loadFixture(fixture);
     const { shipmentId } = await createOrderAndShipment(env, { term: Incoterm.EXW });
-    expect(await env.core.requiredDocumentsAt(shipmentId, Custody.PickedUp)).to.equal(BigInt(base));
-    expect(await env.core.requiredDocumentsAt(shipmentId, Custody.OnVessel)).to.equal(BigInt(base | bl));
+    expect(await env.compliance.requiredForShipment(shipmentId, Custody.PickedUp)).to.equal(BigInt(base));
+    expect(await env.compliance.requiredForShipment(shipmentId, Custody.OnVessel)).to.equal(BigInt(base | bl));
     expect(await env.core.presentationDocuments(shipmentId)).to.equal(BigInt(base | bl));
   });
 
-  it("reverts for an unknown shipment", async function () {
+  it("unknown trades read as an EXW trade (the engine never reverts; the facade checks existence)", async function () {
     const env = await loadFixture(fixture);
-    await expect(env.core.requiredDocumentsAt(777n, Custody.PickedUp)).to.be.revertedWithCustomError(
-      env.core,
-      "ShipmentNotFound"
-    );
+    // getShipment on an unknown id returns an empty struct whose term decodes to EXW.
+    expect(await env.compliance.requiredForShipment(777n, Custody.PickedUp)).to.equal(BigInt(base));
+    expect(await env.compliance.presentationForShipment(777n)).to.equal(BigInt(base | bl));
     await expect(env.core.presentationDocuments(777n)).to.be.revertedWithCustomError(
       env.core,
       "ShipmentNotFound"

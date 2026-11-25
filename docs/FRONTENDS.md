@@ -5,7 +5,8 @@ TradeChain includes two browser interfaces that both connect to the same `TradeC
 | Interface | Location | Start command | Wallet behavior |
 |---|---|---|---|
 | React role dashboard | [`dapp/`](../dapp/) | `cd dapp && npm install && npm run dev` | Explicitly requests MetaMask account access when you click **Connect MetaMask / Load**. Without MetaMask, it uses the configured JSON-RPC endpoint — on a local Hardhat node the unlocked accounts can sign, and the **Active account** selector switches the sender. |
-| No-build flow console | [`ui/index.html`](../ui/index.html) | `python -m http.server 8090` from the repository root | Starts without a permission prompt; it can use an already-authorized MetaMask account, otherwise it is read-only. Click **Connect wallet** to authorize accounts, then choose the active signer from the header account menu. For local demos it also accepts a **test-only private key** in the connection panel. |
+| No-build flow console | [`ui/index.html`](../ui/index.html) | `python -m http.server 8090` from the repository root |
+| Packaged (docker compose) | both of the above | `docker compose up --build` from the repository root | Starts without a permission prompt; it can use an already-authorized MetaMask account, otherwise it is read-only. Click **Connect wallet** to authorize accounts, then choose the active signer from the header account menu. For local demos it also accepts a **test-only private key** in the connection panel. |
 
 ## Connect using MetaMask
 
@@ -84,12 +85,16 @@ dashboard, pick each account in the **Active account** selector instead). Then:
 11. **Bank (#3)** — *4*: **Bank → honorPresentation (examines & honors)**. A sight credit pays the
     beneficiary immediately (L/C panel: *honored yes · sight paid*); a deferred credit schedules
     payment at `honoredAt + deferral`.
-12. **Importer (#2)** — *4*: **Importer → confirmFinalDelivery** → title NFT released to the
+12. **Importer (#2)** — *4*: **Importer → reimburseIssuingBank** — the applicant settles the credit
+    with the bank **on-chain** (25,000 tUSD moves from the importer straight to the bank; the L/C
+    panel shows *reimbursed yes*). Possible once the proceeds are released: after honor for sight,
+    after the maturity draw for deferred.
+13. **Importer (#2)** — *4*: **Importer → confirmFinalDelivery** → title NFT released to the
     importer; the phase becomes `Settled` once the credit has paid.
-13. **Deferred credits only** — advance past maturity on a local node:
+14. **Deferred credits only** — advance past maturity on a local node:
     `curl -X POST -H "Content-Type: application/json" --data '{"jsonrpc":"2.0","id":1,"method":"evm_increaseTime","params":[259201]}' http://127.0.0.1:8545`
     (then `evm_mine`), and **anyone** — e.g. the verifier — clicks **drawDeferredPayment**.
-14. **Expired unused credit** — apply for another credit (bank issues it), let the deadline pass
+15. **Expired unused credit** — apply for another credit (bank issues it), let the deadline pass
     (advance time as above), then **Importer/Bank/Admin → reclaimExpiredLC**: the escrowed funds
     return to the **issuing bank** and the trade ends in `Reclaimed`. If the beneficiary had
     shipped but never presented, the escrowed title returns to the exporter with the goods.

@@ -47,6 +47,8 @@ contract LetterOfCredit is AccessControl, ReentrancyGuard {
         uint64 maturityAt; // sight: == honoredAt; deferred: honoredAt + deferredDays
         bool paid; // proceeds released to the beneficiary
         bool reclaimed; // expired unused credit returned to the issuing bank
+        bool reimbursed; // applicant settled the credit with the issuing bank
+        uint64 reimbursedAt;
         uint256 dutyAmount;
         bool dutyPaid;
         address dutyPayer;
@@ -71,6 +73,8 @@ contract LetterOfCredit is AccessControl, ReentrancyGuard {
     error MaturityNotReached(uint64 maturityAt);
     error AlreadySettled(uint256 id);
     error CreditPresented(uint256 id);
+    error NotPaid(uint256 id);
+    error AlreadyReimbursed(uint256 id);
     error DutyAlreadyPaid(uint256 id);
     error DutyNotPaid(uint256 id);
     error DeadlineNotReached(uint64 deadline);
@@ -87,6 +91,7 @@ contract LetterOfCredit is AccessControl, ReentrancyGuard {
     event LCPresented(uint256 indexed id, address indexed beneficiary, uint64 presentedAt);
     event LCHonored(uint256 indexed id, address indexed beneficiary, uint64 maturityAt, bool deferred);
     event LCPaid(uint256 indexed id, address indexed beneficiary, uint256 amount);
+    event LCReimbursed(uint256 indexed id, address indexed importer, address indexed issuingBank, uint256 amount);
     event DutyPaid(uint256 indexed id, address indexed payer, uint256 amount);
     event LCReclaimed(uint256 indexed id, address indexed issuingBank, uint256 lcRefund, uint256 dutyRefund);
     event TreasuryUpdated(address indexed treasury);
@@ -250,6 +255,28 @@ contract LetterOfCredit is AccessControl, ReentrancyGuard {
         emit TreasuryUpdated(treasury_);
     }
 
+    /// @notice The applicant (importer) reimburses the issuing bank for the credit amount.
+    ///         Only possible once the proceeds have been released — sight: at honor;
+    ///         deferred: at maturity — which is when the bank is actually out of pocket.
+    ///         The reimbursement is settled on-chain: TradeUSD moves from the importer
+    ///         straight to the issuing bank and the credit records itself as reimbursed.
+    /// @dev    The core role-checks that the payer is the trade's importer. CEI: the flag is
+    ///         recorded before the pull-payment, under the reentrancy guard.
+    function reimburse(uint256 id) external onlyRole(CONTROLLER_ROLE) nonReentrant {
+        LC storage lc = _lcs[id];
+        if (!lc.issued) revert NotIssued(id);
+        if (lc.reclaimed) revert AlreadySettled(id);
+        if (!lc.paid) revert NotPaid(id);
+        if (lc.reimbursed) revert AlreadyReimbursed(id);
+
+        TradeTypes.Shipment memory s = tracker.getShipment(id);
+        lc.reimbursed = true;
+        lc.reimbursedAt = uint64(block.timestamp);
+
+        emit LCReimbursed(id, s.importer, lc.issuingBank, lc.amount);
+        token.safeTransferFrom(s.importer, lc.issuingBank, lc.amount);
+    }
+
     // ---------------------------------------------------------------------
     // Internals
     // ---------------------------------------------------------------------
@@ -275,16 +302,8 @@ contract LetterOfCredit is AccessControl, ReentrancyGuard {
         return _lcs[id];
     }
 
-    function isIssued(uint256 id) external view returns (bool) {
-        return _lcs[id].issued;
-    }
-
     function isPresented(uint256 id) external view returns (bool) {
         return _lcs[id].presented;
-    }
-
-    function isHonored(uint256 id) external view returns (bool) {
-        return _lcs[id].honored;
     }
 
     function isPaid(uint256 id) external view returns (bool) {

@@ -63,7 +63,7 @@ Deploy-time wiring (all performed in `TradeChainCore`'s constructor):
 | `ShipmentTracker` | `_owners[tokenId]` / `_tokenURIs[tokenId]` | ERC-721 title owner + `ipfs://<B/L CID>` (`tokenId == trade id`) |
 | `DocumentRegistry` | `_documents[id][docType]` | `DocRecord{cid, issuer, timestamp, verified}` |
 | `TradeChainCore` | `_docRegistryOf[id][docType]` | registry that holds that anchor (snapshot) |
-| `LetterOfCredit` | `_lcs[id]` | `LC{issuingBank, beneficiary, amount, term, deferredDays, requiredDocs, issued, presented, honored, maturityAt, paid, reclaimed, duty…}` |
+| `LetterOfCredit` | `_lcs[id]` | `LC{issuingBank, beneficiary, amount, term, deferredDays, requiredDocs, issued, presented, honored, maturityAt, paid, reclaimed, reimbursed, duty…}` |
 
 The order (application) and its trade record share one monotonic id (`_nextId`, starting at 1);
 the id is also the `ShipmentTracker` token id. The credit lifecycle lives on the shared record, so
@@ -79,6 +79,7 @@ the id is also the `ShipmentTracker` token id. The credit lifecycle lives on the
 | `presentDocuments(id)` | Exporter | phase `Shipped`, before expiry, stipulated set complete & verified | records the presentation → `Presented` |
 | `honorPresentation(id)` | **Bank** | presented, stipulated set still valid on-chain, (DDP) duty paid | examines; sight: pays now; deferred: schedules `maturityAt` → `Honored` |
 | `drawDeferredPayment(id)` | anyone after maturity | honored, not paid, `block.timestamp ≥ maturityAt` | releases the proceeds → `Settled` if delivered |
+| `reimburseIssuingBank(orderId)` | Importer (the trade's applicant) | credit `paid` (proceeds released), not already reimbursed | pulls `lc.amount` TradeUSD from the importer **to the issuing bank** on-chain; `LC.reimbursed = true` |
 | `anchorDocument(id, docType, cid)` | per-DocType role | phase ≥ `Shipped`, anchorable type | anchors once; verified |
 | `confirmPickup(id)` | Logistics | phase `Shipped`, custody `AtExporter`, pickup docs present | custody → `PickedUp`; **EXW**: risk→importer. No payment. |
 | `confirmVesselLoading(id, blCid)` | Logistics | phase `Shipped`, custody `PickedUp`, loading docs present | anchors B/L, sets title `tokenURI`, custody → `OnVessel`; **FOB/CIF**: risk→importer. No payment. |
@@ -124,8 +125,11 @@ registry swap never changes the validity of documents that are already anchored.
    checks-effects-interactions + `nonReentrant`.
 3. `drawDeferred(id, beneficiary)` releases the proceeds at maturity (the core exposes it
    permissionlessly — a stalled bank cannot withhold a deterministic undertaking).
-4. `reclaim(id)` returns the funds of an expired, unused credit to the issuing bank.
-5. `_release` pays the beneficiary and forwards any escrowed duty to the treasury.
+4. `reimburse(id)` settles the applicant's debt on-chain: once the proceeds are released, the
+   credit pulls `amount` TradeUSD from the importer straight to the issuing bank and records
+   `reimbursed` (the bank is out of pocket only between release and reimbursement).
+5. `reclaim(id)` returns the funds of an expired, unused credit to the issuing bank.
+6. `_release` pays the beneficiary and forwards any escrowed duty to the treasury.
 
 ## 6. Off-chain layer — per-role IPFS (one node per participant)
 

@@ -95,8 +95,11 @@ async function deployTradeChain({ settlementToken } = {}) {
     canMint = false;
   }
   if (canMint) {
+    const locAddr = await loc.getAddress();
     for (const holder of [importer, exporter, bank]) {
+      // the core pulls escrow/duty tokens; the LetterOfCredit module pulls the reimbursement
       await token.connect(holder).approve(coreAddr, ethers.MaxUint256);
+      await token.connect(holder).approve(locAddr, ethers.MaxUint256);
     }
   }
 

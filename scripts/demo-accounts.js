@@ -221,7 +221,36 @@ async function main() {
     });
 
   // ---------------------------------------------------------------- 8) delivery
-  heading("## 8 · Final delivery (importer) — title released, trade Settled");
+  heading("## 8 · Reimbursement (importer settles the credit with the issuing bank, on-chain)");
+  // The LetterOfCredit module pulls the reimbursement, so the importer needs an allowance
+  // for it (separate from the core's escrow/duty allowance).
+  const locAllowance = await token.allowance(importer.address, dep.letterOfCredit);
+  if (locAllowance < LC_AMOUNT) {
+    await step("Importer", "ROLE_IMPORTER", "approve",
+      `LetterOfCredit ${dep.letterOfCredit.slice(0, 10)}…, max tUSD (reimbursement pull-payment)`,
+      importer,
+      () => token.connect(importer).approve(dep.letterOfCredit, ethers.MaxUint256),
+      async () => [
+        [(await token.allowance(importer.address, dep.letterOfCredit)) >= LC_AMOUNT, "reimbursement allowance in place"],
+      ]);
+  }
+  const bankTusdBefore = await token.balanceOf(bank.address);
+  const importerTusdBefore = await token.balanceOf(importer.address);
+  await step("Importer", "ROLE_IMPORTER", "reimburseIssuingBank",
+    `settles the credit on-chain — ${ethers.formatUnits(LC_AMOUNT, 6)} tUSD from the importer to the issuing bank`,
+    importer,
+    () => core.connect(importer).reimburseIssuingBank(orderId),
+    async () => {
+      const lc = await core.getLC(orderId);
+      return [
+        [lc.reimbursed, "credit recorded as reimbursed"],
+        [(await token.balanceOf(bank.address)) === bankTusdBefore + LC_AMOUNT, `bank balance +${ethers.formatUnits(LC_AMOUNT, 6)} tUSD (reimbursed)`],
+        [(await token.balanceOf(importer.address)) === importerTusdBefore - LC_AMOUNT, "importer balance reduced by the credit amount"],
+      ];
+    });
+
+  // ---------------------------------------------------------------- 9) delivery
+  heading("## 9 · Final delivery (importer) — title released, trade Settled");
   await step("Importer", "ROLE_IMPORTER", "confirmFinalDelivery",
     "custody Delivered, e-B/L title released to the importer",
     importer,
@@ -244,7 +273,7 @@ async function main() {
     balances[name] = ethers.formatEther(await ethers.provider.getBalance(w.address));
   }
   line("");
-  line(`Trade #${orderId}: phase **${Phase[Number(s.phase)]}**, custody **${Custody[Number(s.custody)]}**, credit paid **${lc.paid}**, title with the **importer**.`);
+  line(`Trade #${orderId}: phase **${Phase[Number(s.phase)]}**, custody **${Custody[Number(s.custody)]}**, credit paid **${lc.paid}**, reimbursed **${lc.reimbursed}**, title with the **importer**.`);
   line("");
   line("| Party | Final ETH (gas paid from these accounts) | Final tUSD |");
   line("|---|---|---|");

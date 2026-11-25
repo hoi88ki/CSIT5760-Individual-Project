@@ -17,7 +17,9 @@
   change through the role-gated facade.
 - **The escrow is bank money.** The issuing bank — never the importer — prefunds the credit at
   issuance, which makes the honor undertaking deterministic (100% cash-collateralised). Real L/Cs
-  are contingent obligations backed by credit lines; this is a teaching model.
+  are contingent obligations backed by credit lines; this is a teaching model. The applicant's
+  **reimbursement is settled on-chain** (`reimburseIssuingBank`, possible once the proceeds are
+  released) and recorded on the credit; *enforcing* a non-paying applicant remains off-chain.
 - **The document registry is swappable, and the swap is guarded.** `setDocumentRegistry` accepts
   only a registry bound to this core whose runtime code matches the deployment-time registry, so a
   look-alike contract cannot forge `isValid` for compliance. Anchors snapshot their registry, so a
@@ -41,6 +43,7 @@
 | **Settlement stall (importer)** | Importer withholds delivery | Either bank may `forceFinalizeDelivery` | `Neutrality` |
 | **Settlement stall (bank, deferred)** | The bank never triggers the maturity payout | `drawDeferredPayment` is permissionless after `maturityAt` — the undertaking is deterministic | `Incoterms.e2e` (deferred flow, drawn by a third party) |
 | **Settlement stall (exporter)** | The exporter never ships | Expired unused credit is reclaimed **to the issuing bank** (importer/bank/admin may trigger) | `Neutrality` |
+| **Applicant reimbursement default** | The importer never pays the bank back after the proceeds are released | The debt is recorded on-chain (`LC.reimbursed` flag + `LCReimbursed` event; `reimburseIssuingBank` is importer-only and pull-based); non-payment is a legal/credit-line matter, as with real L/Cs | `Incoterms.e2e`, `Modules` |
 | **Stranded duty escrow** | Duty escrowed *after* the proceeds were released would never reach the treasury | `payCustomsDuty` reverts `LCAlreadySettled` once `LetterOfCredit.isPaid(id)`; DDP duty must be paid before honor | `AccessControl.test.js`, `Incoterms.e2e` (DDP gate) |
 | **Unauthorized milestone** | Wrong role advances custody / mints the title | `onlyRole` + per-trade beneficiary/importer checks + custody guards | `AccessControl` |
 | **Unauthorized title transfer** | Holder sells/endorses the e-B/L before final delivery | `ShipmentTracker._update` rejects public ERC-721 transfers; only the core can `transferTitle` | `Tokens.test.js` (public `transferFrom` reverts) |

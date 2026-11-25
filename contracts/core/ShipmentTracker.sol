@@ -110,8 +110,8 @@ contract ShipmentTracker is ERC721URIStorage, AccessControl {
 
     /// @notice The named exporter ships against the issued credit: the trade advances to
     ///         `Shipped`. The invoice and packing list are anchored by the core right after.
-    function ship(uint256 id, address exporter) external onlyCore returns (TradeTypes.Order memory o) {
-        o = _orders[id];
+    function ship(uint256 id, address exporter) external onlyCore {
+        TradeTypes.Order memory o = _orders[id];
         if (o.importer == address(0)) revert OrderNotFound(id);
         if (o.exporter != exporter) revert NotOrderedExporter(id, exporter);
         if (block.timestamp >= o.deadline) revert InvalidDeadline(o.deadline);

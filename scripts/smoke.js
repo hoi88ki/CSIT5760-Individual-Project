@@ -68,7 +68,13 @@ async function main() {
   const lc2 = await core.getLC(orderId);
   console.log(`honored: paid=${lc2.paid}`);
 
-  // 6) delivery + title
+  // 6) the applicant reimburses the issuing bank on-chain
+  await (await token.connect(me).approve(dep.letterOfCredit, ethers.MaxUint256)).wait();
+  await (await core.connect(me).reimburseIssuingBank(orderId)).wait();
+  const lc3 = await core.getLC(orderId);
+  console.log(`reimbursed: ${lc3.reimbursed} (TradeUSD ${ethers.formatUnits(lc3.amount, 6)} importer -> issuing bank)`);
+
+  // 7) delivery + title
   await (await core.connect(me).confirmFinalDelivery(orderId)).wait();
   const s = await core.getShipment(orderId);
   console.log(`final phase=${Phase[Number(s.phase)]} (6=Settled), title owner=${await nft.ownerOf(orderId)}`);

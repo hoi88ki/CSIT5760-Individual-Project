@@ -158,6 +158,29 @@ async function main() {
   }
   record("");
   record(`Escrow account (LetterOfCredit module): \`${dep.letterOfCredit}\``);
+
+  // TradeUSD allowances: the core pulls escrow/duty tokens; the LetterOfCredit module
+  // pulls the applicant's reimbursement straight to the issuing bank.
+  record("");
+  record("## 5. TradeUSD allowances (core escrow/duty + credit reimbursement pull-payment)");
+  record("");
+  record("| Account | Core allowance | Credit allowance | Tx |");
+  record("|---|---|---|---|");
+
+  for (const [envKey] of ROLE_KEYS) {
+    const name = envKey.replace("_PRIVATE_KEY", "");
+    if (!(name in MINT)) continue;
+    const w = wallets[name];
+    const coreOk = (await token.allowance(w.address, dep.core)) >= MINT[name];
+    const locOk = (await token.allowance(w.address, dep.letterOfCredit)) >= MINT[name];
+    if (coreOk && locOk) {
+      record(`| ${name} | sufficient | sufficient | — |`);
+      continue;
+    }
+    if (!coreOk) await (await token.connect(w).approve(dep.core, ethers.MaxUint256)).wait();
+    if (!locOk) await (await token.connect(w).approve(dep.letterOfCredit, ethers.MaxUint256)).wait();
+    record(`| ${name} | ${coreOk ? "sufficient" : "max (set)"} | ${locOk ? "sufficient" : "max (set)"} | set by ${name} |`);
+  }
   record("");
   record("> The ADMIN/deployer also retains its originally granted roles from the single-account");
   record("> deployment; the workflow demo (`scripts/demo-accounts.js`) signs every step with the");

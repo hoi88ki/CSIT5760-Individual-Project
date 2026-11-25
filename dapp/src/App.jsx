@@ -119,10 +119,13 @@ export default function App() {
   }
 
   async function approveToken() {
+    // Two allowances: the core pulls escrow/duty tokens, and the LetterOfCredit module
+    // pulls the applicant's reimbursement straight to the issuing bank.
     const s = await signer();
     const tokenAddr = await core.settlementToken();
     const token = new Contract(tokenAddr, ERC20_ABI, s);
-    return token.approve(await core.getAddress(), MaxUint256);
+    await (await token.approve(await core.getAddress(), MaxUint256)).wait();
+    return token.approve(await core.letterOfCredit(), MaxUint256);
   }
 
   async function onUpload(e, setter, key) {
@@ -165,7 +168,7 @@ export default function App() {
         } · custody ${CUSTODY[Number(s.custody)]}\n` +
           `beneficiary (exporter) ${s.exporter}\napplicant (importer) ${s.importer}\nriskHolder ${s.riskHolder}\n` +
           `L/C ${formatUnits(s.lcAmount, 6)} tUSD · ${payTerm}${Number(lc.term) === 1 ? ` (+${lc.deferredDays}d)` : ""}\n` +
-          `issuing bank ${lc.issuingBank}\nissued ${lc.issued} · presented ${lc.presented} · honored ${lc.honored} · paid ${lc.paid} · reclaimed ${lc.reclaimed}\n` +
+          `issuing bank ${lc.issuingBank}\nissued ${lc.issued} · presented ${lc.presented} · honored ${lc.honored} · paid ${lc.paid} · reimbursed ${lc.reimbursed} · reclaimed ${lc.reclaimed}\n` +
           `duty ${formatUnits(lc.dutyAmount, 6)}${lc.dutyPaid ? " (paid)" : " (unpaid)"}\n` +
           `examination: ${ok ? "presentation set complete — the bank may honor" : `not presentable yet (missing ${DOC_TYPES[Number(missing)]})`}\n\n` +
           `documents: ${docs.join(", ")}`
@@ -349,6 +352,11 @@ export default function App() {
             onClick={() => run("drawDeferredPayment", async () => core.connect(await signer()).drawDeferredPayment(doc.shipmentId))}
           >
             Anyone → drawDeferredPayment (after maturity)
+          </button>
+          <button
+            onClick={() => run("reimburseIssuingBank", async () => core.connect(await signer()).reimburseIssuingBank(ship.orderId))}
+          >
+            Importer → reimburseIssuingBank (after honor)
           </button>
         </section>
 

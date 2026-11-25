@@ -362,6 +362,16 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
         _anchor(id, docType, cid, msg.sender);
     }
 
+    /// @notice The applicant (importer) reimburses the issuing bank on-chain for the credit
+    ///         amount. Only possible once the proceeds have been released — sight: at honor;
+    ///         deferred: at maturity — which is when the bank is actually out of pocket.
+    ///         The reimbursement is recorded on the credit (`LCReimbursed`).
+    function reimburseIssuingBank(uint256 orderId) external onlyRole(ROLE_IMPORTER) {
+        TradeTypes.Shipment memory s = _requireShipment(orderId);
+        if (s.importer != msg.sender) revert Unauthorized(msg.sender);
+        letterOfCredit.reimburse(orderId);
+    }
+
     // ---------------------------------------------------------------------
     // Custody milestones (payment does NOT follow these)
     // ---------------------------------------------------------------------
@@ -580,17 +590,9 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
         return complianceEngine.presentationMask(s.term);
     }
 
-    /// @notice Custody-gate documentary set for a trade's Incoterm at a custody checkpoint.
-    function requiredDocumentsAt(uint256 id, TradeTypes.Custody custody) external view returns (uint8) {
-        TradeTypes.Shipment memory s = _requireShipment(id);
-        return complianceEngine.requiredMask(s.term, custody);
-    }
-
-    /// @notice Custody-gate compliance at a checkpoint.
-    function isCompliant(uint256 id, TradeTypes.Custody custody) external view returns (bool) {
-        TradeTypes.Shipment memory s = _requireShipment(id);
-        return complianceEngine.isCompliant(id, s.term, custody);
-    }
+    // Custody-gate masks/compliance are read through the ComplianceEngine directly
+    // (`requiredForShipment(id, custody)`, `isCompliant(id, term, custody)`); the core
+    // keeps the credit-facing views (`presentationDocuments`, `examinePresentation`).
 
     /// @notice Bank's examination preview: the first stipulated document that is missing or
     ///         revoked, if any. `(true, _)` means a complying presentation.

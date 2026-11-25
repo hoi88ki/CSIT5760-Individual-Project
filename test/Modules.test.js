@@ -484,7 +484,7 @@ describe("Companion contract internals", function () {
       await loc.issue(id, admin.address, exporter.address, LC, PaymentTerm.Sight, 0n, CIF_PRESENTATION);
       await expect(loc.issue(id, admin.address, exporter.address, LC, PaymentTerm.Sight, 0n, CIF_PRESENTATION)).to.be
         .revertedWithCustomError(loc, "AlreadyIssued");
-      expect(await loc.isIssued(id)).to.equal(true);
+      expect((await loc.getLC(id)).issued).to.equal(true);
 
       await loc.payDuty(id, importer.address, 0); // duty tokens are moved by the core in production
       await expect(loc.payDuty(id, importer.address, 0)).to.be.revertedWithCustomError(loc, "DutyAlreadyPaid");
@@ -496,13 +496,13 @@ describe("Companion contract internals", function () {
       await anchorPresentationSet(registry, id, Incoterm.FOB);
       await loc.recordPresentation(id);
       await expect(loc.recordPresentation(id)).to.be.revertedWithCustomError(loc, "AlreadyPresented");
-      expect(await loc.isPresented(id)).to.equal(true);
+      expect((await loc.getLC(id)).presented).to.equal(true);
 
       const before = await usd.balanceOf(exporter.address);
       expect(await loc.connect(admin).honor.staticCall(id, exporter.address)).to.equal(true); // sight: pays now
       await loc.connect(admin).honor(id, exporter.address);
       expect(await usd.balanceOf(exporter.address)).to.equal(before + LC);
-      expect(await loc.isHonored(id)).to.equal(true);
+      expect((await loc.getLC(id)).honored).to.equal(true);
       expect(await loc.isPaid(id)).to.equal(true);
 
       // The sight credit already paid: the settled guard fires before the honored guard.
@@ -555,7 +555,7 @@ describe("Companion contract internals", function () {
 
       expect(await loc.connect(admin).honor.staticCall(id, exporter.address)).to.equal(false); // scheduled
       await loc.connect(admin).honor(id, exporter.address);
-      expect(await loc.isHonored(id)).to.equal(true);
+      expect((await loc.getLC(id)).honored).to.equal(true);
       expect(await loc.isPaid(id)).to.equal(false);
 
       // An honored-but-unpaid (deferred) credit cannot be honored a second time.
@@ -638,6 +638,51 @@ describe("Companion contract internals", function () {
       await expect(loc.drawDeferred(id, exporter.address)).to.be.revertedWithCustomError(loc, "AlreadySettled");
     });
 
+    it("settles the applicant's reimbursement on-chain once the proceeds are released", async function () {
+      const { usd, tracker, registry, loc } = await deploy();
+      const id = await makeShipment(tracker, Incoterm.FOB, PaymentTerm.Deferred, 1n);
+      await usd.mint(await loc.getAddress(), LC);
+      await usd.mint(importer.address, LC);
+      await usd.connect(importer).approve(await loc.getAddress(), LC);
+      await loc.issue(id, admin.address, exporter.address, LC, PaymentTerm.Deferred, 1n, 0);
+      await anchorPresentationSet(registry, id, Incoterm.FOB);
+      await loc.recordPresentation(id);
+      await loc.connect(admin).honor(id, exporter.address);
+
+      // Honored (deferred) but not yet drawn: the bank is not out of pocket yet.
+      await expect(loc.reimburse(id)).to.be.revertedWithCustomError(loc, "NotPaid");
+
+      await time.increaseTo(Number((await loc.getLC(id)).maturityAt) + 1);
+      await loc.drawDeferred(id, exporter.address);
+
+      // Proceeds released: TradeUSD is pulled from the trade's importer to the issuing bank.
+      const bankBefore = await usd.balanceOf(admin.address);
+      const importerBefore = await usd.balanceOf(importer.address);
+      await expect(loc.reimburse(id))
+        .to.emit(loc, "LCReimbursed")
+        .withArgs(id, importer.address, admin.address, LC);
+      expect(await usd.balanceOf(admin.address)).to.equal(bankBefore + LC);
+      expect(await usd.balanceOf(importer.address)).to.equal(importerBefore - LC);
+      const lc = await loc.getLC(id);
+      expect(lc.reimbursed).to.equal(true);
+      expect(Number(lc.reimbursedAt)).to.be.greaterThan(0);
+      await expect(loc.reimburse(id)).to.be.revertedWithCustomError(loc, "AlreadyReimbursed");
+    });
+
+    it("refuses reimbursement for an unpaid or reclaimed credit", async function () {
+      const { usd, tracker, loc } = await deploy();
+      const id = await makeShipment(tracker);
+      await usd.mint(await loc.getAddress(), LC);
+      await loc.issue(id, admin.address, exporter.address, LC, PaymentTerm.Sight, 0n, 0);
+
+      // Issued but never honored/paid: nothing has left the bank's pocket.
+      await expect(loc.reimburse(id)).to.be.revertedWithCustomError(loc, "NotPaid");
+
+      await time.increaseTo(Number((await tracker.getShipment(id)).deadline) + 1);
+      await loc.reclaim(id);
+      await expect(loc.reimburse(id)).to.be.revertedWithCustomError(loc, "AlreadySettled");
+    });
+
     it("refuses to reclaim an honored deferred credit", async function () {
       const { usd, tracker, registry, loc } = await deploy();
       const id = await makeShipment(tracker, Incoterm.FOB, PaymentTerm.Deferred, 5n);
@@ -673,9 +718,9 @@ describe("Companion contract internals", function () {
       await loc.setTreasury(outsider.address);
       expect(await loc.treasury()).to.equal(outsider.address);
       expect(await loc.getLC(1n)).to.not.equal(undefined);
-      expect(await loc.isIssued(1n)).to.equal(false);
-      expect(await loc.isPresented(1n)).to.equal(false);
-      expect(await loc.isHonored(1n)).to.equal(false);
+      expect((await loc.getLC(1n)).issued).to.equal(false);
+      expect((await loc.getLC(1n)).presented).to.equal(false);
+      expect((await loc.getLC(1n)).honored).to.equal(false);
       expect(await loc.isPaid(1n)).to.equal(false);
       expect(await loc.escrowBalance()).to.equal(0n);
     });

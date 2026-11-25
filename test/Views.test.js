@@ -84,7 +84,7 @@ describe("Views & convenience getters", function () {
     for (const term of [Incoterm.EXW, Incoterm.FOB, Incoterm.CIF, Incoterm.DDP]) {
       const { shipmentId } = await createOrderAndShipment(env, { term });
       for (const custody of custodies) {
-        await env.core.requiredDocumentsAt(shipmentId, custody);
+        await env.compliance.requiredForShipment(shipmentId, custody);
       }
       await env.core.presentationDocuments(shipmentId);
     }

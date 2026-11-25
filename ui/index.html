@@ -231,6 +231,7 @@
         <div style="max-width:150px;align-self:flex-end"><button id="btnDuty">payCustomsDuty</button></div>
       </div>
       <button id="btnDeliver">Importer → confirmFinalDelivery</button>
+      <button id="btnReimburse">Importer → reimburseIssuingBank (after honor)</button>
       <button id="btnForce">Bank → forceFinalizeDelivery</button>
       <button id="btnReclaim">Importer/Bank/Admin → reclaimExpiredLC (unused credit → bank)</button>
       <p class="hint">Present only after the stipulated document set (★ below) is anchored and the goods are
@@ -307,6 +308,7 @@ const CORE_ABI = [
   "function payCustomsDuty(uint256 id, uint256 amount)","function confirmPickup(uint256 id)",
   "function confirmVesselLoading(uint256 id, string blCid)","function confirmFinalDelivery(uint256 id)",
   "function forceFinalizeDelivery(uint256 id)","function reclaimExpiredLC(uint256 orderId)",
+  "function reimburseIssuingBank(uint256 orderId)",
   "function revokeDocument(uint256 id, uint8 docType)",
   "function settlementToken() view returns (address)","function shipmentTracker() view returns (address)",
   "function documentRegistry() view returns (address)","function complianceEngine() view returns (address)",
@@ -321,7 +323,7 @@ const CORE_ABI = [
   "function hasRole(bytes32 role, address account) view returns (bool)",
   "function getOrder(uint256 orderId) view returns (tuple(uint256 id,address importer,address exporter,uint8 term,uint8 paymentTerm,uint64 deferredDays,uint64 deadline,uint256 lcAmount))",
   "function getShipment(uint256 id) view returns (tuple(uint256 id,uint256 orderId,address exporter,address importer,uint8 term,uint8 paymentTerm,uint64 deferredDays,uint8 phase,uint8 custody,uint64 createdAt,uint64 deadline,uint256 lcAmount,address riskHolder))",
-  "function getLC(uint256 id) view returns (tuple(uint256 id,address issuingBank,address beneficiary,uint256 amount,uint8 term,uint64 deferredDays,uint64 issuedAt,uint8 requiredDocs,bool issued,bool presented,uint64 presentedAt,bool honored,uint64 honoredAt,uint64 maturityAt,bool paid,bool reclaimed,uint256 dutyAmount,bool dutyPaid,address dutyPayer))",
+  "function getLC(uint256 id) view returns (tuple(uint256 id,address issuingBank,address beneficiary,uint256 amount,uint8 term,uint64 deferredDays,uint64 issuedAt,uint8 requiredDocs,bool issued,bool presented,uint64 presentedAt,bool honored,uint64 honoredAt,uint64 maturityAt,bool paid,bool reclaimed,bool reimbursed,uint64 reimbursedAt,uint256 dutyAmount,bool dutyPaid,address dutyPayer))",
 ];
 const TRACKER_ABI = [
   "function name() view returns (string)","function ownerOf(uint256 tokenId) view returns (address)",
@@ -541,6 +543,9 @@ async function refresh() {
         ? (Number(lc.term) === 0 ? "yes · sight paid" : `yes · payable ${new Date(Number(lc.maturityAt) * 1000).toLocaleTimeString()}`)
         : "no"],
       ["paid", String(lc.paid)], ["reclaimed", String(lc.reclaimed)],
+      ["reimbursed", lc.reimbursed
+        ? `yes · ${new Date(Number(lc.reimbursedAt) * 1000).toLocaleTimeString()}`
+        : (lc.paid ? "no — the applicant owes the bank" : "—")],
       ["stipulated documents", String(lc.requiredDocs) + " (bitmask)"],
       ["duty", fmt(lc.dutyAmount) + (lc.dutyPaid ? " (paid)" : " (unpaid)")],
       ["duty payer", lc.dutyPayer === ethers.ZeroAddress ? "—" : short(lc.dutyPayer)],
@@ -746,9 +751,14 @@ $("btnRefresh").onclick = () => refresh();
 $("shipId").onchange = () => refresh();
 $("term").onchange = () => refresh();
 
-$("btnApprove").onclick = () => need() && send("approve TradeUSD", async () => {
+$("btnApprove").onclick = () => need() && send("approve TradeUSD (core + credit escrow)", async () => {
+  // Two allowances are needed: the core pulls escrow/duty tokens, and the LetterOfCredit
+  // module pulls the applicant's reimbursement straight to the issuing bank.
   const c = new ethers.Contract(await core.settlementToken(), TOKEN_ABI, signer);
-  return c.approve(await core.getAddress(), ethers.MaxUint256);
+  const rc1 = await (await c.approve(await core.getAddress(), ethers.MaxUint256)).wait();
+  const rc2 = await (await c.approve(await core.letterOfCredit(), ethers.MaxUint256)).wait();
+  log(`approve ✔ core gas ${rc1.gasUsed} · credit gas ${rc2.gasUsed}`);
+  return rc2;
 });
 $("btnMint").onclick = () => need() && send("mint tUSD", () =>
   core.mint($("mintTo").value.trim() || account, BigInt($("mintAmt").value) * UNIT));
@@ -792,6 +802,7 @@ $("btnLoad2").onclick = () => need() && send("confirmVesselLoading", () =>
 $("btnDuty").onclick = () => need() && send("payCustomsDuty", () =>
   core.payCustomsDuty(shipId(), BigInt($("duty").value || "0") * UNIT));
 $("btnDeliver").onclick = () => need() && send("confirmFinalDelivery", () => core.confirmFinalDelivery(shipId()));
+$("btnReimburse").onclick = () => need() && send("reimburseIssuingBank", () => core.reimburseIssuingBank(shipId()));
 $("btnForce").onclick = () => need() && send("forceFinalizeDelivery", () => core.forceFinalizeDelivery(shipId()));
 $("btnReclaim").onclick = () => need() && send("reclaimExpiredLC", () => core.reclaimExpiredLC(shipId()));
 

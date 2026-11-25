@@ -5,6 +5,29 @@ Authoritative design rationale stays in [`docs/DESIGN_DECISIONS.md`](./docs/DESI
 
 ---
 
+## 2026-11-25 — On-chain applicant reimbursement + UI packaging
+
+- **The applicant's reimbursement is now an on-chain settlement step** (`reimburseIssuingBank`):
+  once the proceeds have been released (sight: at honor; deferred: at maturity), the trade's
+  importer pulls `lc.amount` TradeUSD **straight to the issuing bank** and the credit records
+  `reimbursed`/`reimbursedAt` (`LCReimbursed` event). Guards: importer-only (the trade's own
+  applicant), `NotPaid` before release, `AlreadyReimbursed` afterwards, refused after reclaim.
+  Rationale in `docs/DESIGN_DECISIONS.md` D28; D22 updated (the importer never funds the *escrow*,
+  but settles its debt to the bank on-chain).
+- Both UIs gained the reimbursement action and an L/C viewer "reimbursed" row; the approve button
+  now grants **two** allowances (core for escrow/duty, `LetterOfCredit` for the pull-payment).
+- Scripts updated: `demo-accounts.js` (approve + reimburse step with bank-balance checks),
+  `smoke.js`, `seed-demo.js`, and `setup-accounts.js` (section 5 sets the TradeUSD allowances).
+- Tests: module-level reimburse guards (NotPaid / pull-payment balance checks / AlreadyReimbursed /
+  reclaimed) and end-to-end coverage (only the trade's applicant; refused before release; no
+  repeats). 135 passing; the core stays under the EIP-3860 cap (48,823 B) after trimming the
+  redundant core compliance wrappers (`requiredDocumentsAt`/`isCompliant` → read the
+  `ComplianceEngine` directly) and the optimizer tuned to 40 runs.
+- Docker packaging: `docker compose up --build` serves the flow console on :8080 (under `/ui/`,
+  with `/` redirecting) and the role dashboard on :8081.
+
+---
+
 ## 2026-11-25 — Multi-account demo on the live deployment + UI packaging
 
 With six distinct role keys in `.env` (`ADMIN/IMPORTER/EXPORTER/BANK/LOGISTICS/VERIFIER_PRIVATE_KEY`),

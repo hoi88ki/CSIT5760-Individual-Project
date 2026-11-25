@@ -218,6 +218,7 @@ Exporter   presentDocuments(id)                       → records the presentati
 Bank       honorPresentation(id)                      → examines; sight pays now, deferred schedules maturity
 Anyone     drawDeferredPayment(id)                    → after maturity (deferred credits)
 Importer   confirmFinalDelivery(id)                   → releases title; Settled when paid
+Importer   reimburseIssuingBank(orderId)             → settles the credit with the bank ON-CHAIN (after honor/maturity)
 Importer/Bank/Admin  reclaimExpiredLC(orderId)        → expired UNUSED credit returns to the issuing bank
 Bank       forceFinalizeDelivery(id)                  → if the importer withholds after loading
 ```
@@ -245,10 +246,13 @@ Bank       forceFinalizeDelivery(id)                  → if the importer withho
 ├── scripts/
 │   ├── deploy.js                       # deploy + wire the six contracts + roles
 │   ├── smoke.js                        # post-deployment check: one full sight credit on the live core
+│   ├── setup-accounts.js               # fund the role accounts, grant roles, mint TradeUSD (recorded)
+│   ├── demo-accounts.js                # multi-party workflow: each step signed by its role account (recorded)
 │   ├── seed-demo.js                    # drive the credit workflow: issue → ship → present → honor → deliver
 │   ├── verify.js                       # Etherscan verification helper
 │   ├── ipfs-add.js                     # upload to a role's kubo node → CIDv1
 │   └── ipfs-pin.js                     # keep a counterparty's own copy of a CID
+├── docker-compose.yml                  # packages both UIs (flow console :8080, dashboard :8081)
 ├── dapp/                               # React (Vite) + ethers v6 + MetaMask dashboard
 │   └── src/ipfs.js · src/App.jsx       # upload + document-viewer (retrieve by CID from a node)
 ├── ui/                                 # single-file HTML/JS console (no build step)
@@ -317,6 +321,39 @@ npx hardhat run scripts/verify.js  --network sepolia
 > per-network key map is deprecated.
 > Set role wallets (optional, distinct addresses) with `TRADECHAIN_EXPORTER` … `TRADECHAIN_VERIFIER`
 > before deploying; otherwise every role defaults to the deployer on a single-account network.
+
+### Multi-party demo on the live deployment (distinct accounts)
+
+With six role keys in `.env` (`ADMIN_PRIVATE_KEY`, `IMPORTER_PRIVATE_KEY`,
+`EXPORTER_PRIVATE_KEY`, `BANK_PRIVATE_KEY`, `LOGISTICS_PRIVATE_KEY`, `VERIFIER_PRIVATE_KEY`):
+
+```bash
+npx hardhat run scripts/setup-accounts.js --network sepolia   # fund ETH, grant roles, mint TradeUSD
+npx hardhat run scripts/demo-accounts.js  --network sepolia   # full workflow, each step signed by its party
+```
+
+`setup-accounts.js` validates the keys, tops the role accounts up with ETH from the ADMIN account,
+grants each operational role to its own address in a single `grantRoles` transaction, and mints
+demo `TradeUSD` (the **bank** funds the L/C escrows). `demo-accounts.js` then drives the whole
+credit workflow — application → issuance → shipment → attestation → custody → presentation →
+honor → delivery — with every transaction signed by the party's own key, and writes the complete
+transaction record (Etherscan links, blocks, gas, on-chain checks) to
+`deployments/<network>-demo-log.md`. The recorded run against the live deployment is committed at
+[`deployments/sepolia-demo-log.md`](./deployments/sepolia-demo-log.md).
+
+### Both UIs with docker compose
+
+```bash
+docker compose up --build
+```
+
+| Service | URL | Contents |
+|---|---|---|
+| Flow console | <http://localhost:8080/ui/index.html> | `ui/` served by nginx (pre-set to the verified Sepolia deployment) |
+| Role dashboard | <http://localhost:8081> | `dapp/` built with Vite and served by nginx (reads the chain via `VITE_RPC_URL`, default a public Sepolia node) |
+
+Transactions always need a wallet in the browser (import the role accounts you use for the demo).
+To point the packaged dashboard at a local node instead: `VITE_RPC_URL=http://host.docker.internal:8545 docker compose up --build`.
 
 ### React DApp
 

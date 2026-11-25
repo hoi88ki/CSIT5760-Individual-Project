@@ -88,8 +88,8 @@ describe("Swappable DocumentRegistry & mounted module access control", function 
       // ... while pre-swap anchors still resolve to the registry that holds them.
       expect(await env.core.hasValidDocument(a.shipmentId, DocType.InspectionCertificate)).to.equal(true);
       expect(await env.core.hasValidDocument(a.shipmentId, DocType.CommercialInvoice)).to.equal(true);
-      expect(await env.core.isCompliant(a.shipmentId, Custody.PickedUp)).to.equal(true);
-      expect(await env.core.isCompliant(b.shipmentId, Custody.PickedUp)).to.equal(true);
+      expect(await env.compliance.isCompliant(a.shipmentId, Incoterm.FOB, Custody.PickedUp)).to.equal(true);
+      expect(await env.compliance.isCompliant(b.shipmentId, Incoterm.FOB, Custody.PickedUp)).to.equal(true);
 
       // Revocation resolves to the registry that holds the document.
       await env.core.connect(env.verifier).revokeDocument(a.shipmentId, DocType.InspectionCertificate);

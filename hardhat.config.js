@@ -19,7 +19,9 @@ module.exports = {
       evmVersion: "cancun",
       optimizer: {
         enabled: true,
-        runs: 200,
+        // 40 runs keeps the core's initcode (which embeds its four companions) well under
+        // the EIP-3860 cap enforced on Sepolia while still optimizing the hot paths.
+        runs: 40,
       },
       // The core's constructor embeds its four companions' creation code, so every byte
       // saved per contract counts four times toward the EIP-3860 initcode cap (49,152 B,

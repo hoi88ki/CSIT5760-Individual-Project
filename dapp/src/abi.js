@@ -22,6 +22,7 @@ export const CORE_ABI = [
   "function confirmFinalDelivery(uint256 id)",
   "function reclaimExpiredLC(uint256 orderId)",
   "function forceFinalizeDelivery(uint256 id)",
+  "function reimburseIssuingBank(uint256 orderId)",
   "function revokeDocument(uint256 id, uint8 docType)",
   // registry / module administration (admin or ROLE_REGISTRY_ADMIN)
   "function setDocumentRegistry(address newRegistry)",
@@ -41,7 +42,7 @@ export const CORE_ABI = [
   "function examinePresentation(uint256 id) view returns (bool ok, uint8 missing)",
   "function requiredDocumentsAt(uint256 id, uint8 custody) view returns (uint8)",
   "function getShipment(uint256 id) view returns (tuple(uint256 id, uint256 orderId, address exporter, address importer, uint8 term, uint8 paymentTerm, uint64 deferredDays, uint8 phase, uint8 custody, uint64 createdAt, uint64 deadline, uint256 lcAmount, address riskHolder))",
-  "function getLC(uint256 id) view returns (tuple(uint256 id, address issuingBank, address beneficiary, uint256 amount, uint8 term, uint64 deferredDays, uint64 issuedAt, uint8 requiredDocs, bool issued, bool presented, uint64 presentedAt, bool honored, uint64 honoredAt, uint64 maturityAt, bool paid, bool reclaimed, uint256 dutyAmount, bool dutyPaid, address dutyPayer))",
+  "function getLC(uint256 id) view returns (tuple(uint256 id, address issuingBank, address beneficiary, uint256 amount, uint8 term, uint64 deferredDays, uint64 issuedAt, uint8 requiredDocs, bool issued, bool presented, uint64 presentedAt, bool honored, uint64 honoredAt, uint64 maturityAt, bool paid, bool reclaimed, bool reimbursed, uint64 reimbursedAt, uint256 dutyAmount, bool dutyPaid, address dutyPayer))",
 ];
 
 export const ERC20_ABI = [

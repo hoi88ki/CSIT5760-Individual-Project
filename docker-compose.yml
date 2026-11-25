@@ -1,0 +1,34 @@
+# TradeChain UIs — no-build flow console and React role dashboard, side by side.
+#
+#   docker compose up --build
+#
+#   Flow console    http://localhost:8080/ui/index.html
+#   Role dashboard  http://localhost:8081
+#
+# The flow console opens pre-set to the verified Sepolia deployment (see
+# deployments/sepolia.json). The role dashboard is built with VITE_RPC_URL so it
+# reads the live chain without MetaMask; transactions always require MetaMask
+# (import the role accounts you use for the demo) or a browser-side RPC wallet.
+# To target a local node instead:
+#   VITE_RPC_URL=http://host.docker.internal:8545 docker compose up --build
+services:
+  flow-console:
+    build: ./ui
+    image: tradechain-flow-console
+    container_name: tradechain-flow-console
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+  role-dashboard:
+    build:
+      context: ./dapp
+      args:
+        # Read-only RPC used when MetaMask is absent. Override for a local node,
+        # e.g. http://host.docker.internal:8545 (docker -> host).
+        VITE_RPC_URL: ${VITE_RPC_URL:-https://ethereum-sepolia-rpc.publicnode.com}
+    image: tradechain-role-dashboard
+    container_name: tradechain-role-dashboard
+    ports:
+      - "8081:80"
+    restart: unless-stopped
