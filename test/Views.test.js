@@ -3,12 +3,16 @@ const { ethers } = require("hardhat");
 const { loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
 const {
   Incoterm,
+  PaymentTerm,
   Phase,
+  Custody,
   DocType,
   CID,
+  LC,
   deployTradeChain,
   createOrderAndShipment,
-  fundLC,
+  toPresentable,
+  present,
 } = require("./helpers/fixture");
 
 describe("Views & convenience getters", function () {
@@ -17,15 +21,15 @@ describe("Views & convenience getters", function () {
   it("exposes order/shipment/document/LC getters", async function () {
     const env = await loadFixture(fixture);
     const { orderId, shipmentId } = await createOrderAndShipment(env, { term: Incoterm.FOB });
-    await fundLC(env, shipmentId);
     await env.core.connect(env.verifier).anchorDocument(shipmentId, DocType.InspectionCertificate, CID.inspection);
 
     expect(await env.core.orderCount()).to.equal(1n);
     expect(await env.core.shipmentCount()).to.equal(1n);
 
     const order = await env.core.getOrder(orderId);
-    expect(order.fulfilled).to.equal(true);
-    expect(order.shipmentId).to.equal(shipmentId);
+    expect(order.exporter).to.equal(env.exporter.address);
+    expect(order.importer).to.equal(env.importer.address);
+    expect(order.paymentTerm).to.equal(PaymentTerm.Sight);
 
     const doc = await env.core.getDocument(shipmentId, DocType.InspectionCertificate);
     expect(doc.cid).to.equal(CID.inspection);
@@ -33,7 +37,9 @@ describe("Views & convenience getters", function () {
     expect(await env.core.hasValidDocument(shipmentId, DocType.InspectionCertificate)).to.equal(true);
 
     const lc = await env.core.getLC(shipmentId);
-    expect(lc.funded).to.equal(true);
+    expect(lc.issued).to.equal(true);
+    expect(lc.issuingBank).to.equal(env.bank.address);
+    expect(lc.beneficiary).to.equal(env.exporter.address);
     expect(lc.paid).to.equal(false);
 
     // Unknown reads return empty values (no revert).
@@ -63,25 +69,41 @@ describe("Views & convenience getters", function () {
     await core.waitForDeployment();
 
     expect(await core.settlementToken()).to.equal(await usd.getAddress());
+
+    await expect(Core.deploy(ethers.ZeroAddress)).to.be.revertedWithCustomError(Core, "ZeroAddress");
   });
 
-  it("covers every Incoterm x phase required-document combination", async function () {
+  it("covers every Incoterm x custody required-document combination", async function () {
     const env = await loadFixture(fixture);
-    const phases = [
-      Phase.Created,
-      Phase.LCFunded,
-      Phase.PickedUp,
-      Phase.LoadedOnVessel,
-      Phase.Delivered,
-      Phase.Settled,
-      Phase.Reclaimed,
+    const custodies = [
+      Custody.AtExporter,
+      Custody.PickedUp,
+      Custody.OnVessel,
+      Custody.Delivered,
     ];
     for (const term of [Incoterm.EXW, Incoterm.FOB, Incoterm.CIF, Incoterm.DDP]) {
       const { shipmentId } = await createOrderAndShipment(env, { term });
-      for (const phase of phases) {
-        await env.core.requiredDocumentsAt(shipmentId, phase);
+      for (const custody of custodies) {
+        await env.core.requiredDocumentsAt(shipmentId, custody);
       }
+      await env.core.presentationDocuments(shipmentId);
     }
+  });
+
+  it("exposes the examination preview and presentation compliance", async function () {
+    const env = await loadFixture(fixture);
+    const { shipmentId } = await createOrderAndShipment(env, { term: Incoterm.CIF });
+
+    let [ok, missing] = await env.core.examinePresentation(shipmentId);
+    expect(ok).to.equal(false);
+    expect(missing).to.equal(DocType.InspectionCertificate); // invoice+packing already anchored
+
+    await toPresentable(env, shipmentId);
+    [ok, missing] = await env.core.examinePresentation(shipmentId);
+    expect(ok).to.equal(true);
+
+    await present(env, shipmentId);
+    expect(await env.compliance.isPresentationCompliant(shipmentId, Incoterm.CIF)).to.equal(true);
   });
 
   it("exposes token helper views through the deployed core", async function () {
@@ -90,5 +112,15 @@ describe("Views & convenience getters", function () {
     expect(await env.nft.exists(shipmentId)).to.equal(true);
     expect(await env.nft.supportsInterface("0x80ac58cd")).to.equal(true);
     expect(await env.token.decimals()).to.equal(6);
+  });
+
+  it("tracks the credit phases on the shared record", async function () {
+    const env = await loadFixture(fixture);
+    const { orderId, shipmentId } = await createOrderAndShipment(env, { term: Incoterm.FOB });
+    expect(Number((await env.core.getShipment(orderId)).phase)).to.equal(Phase.Shipped);
+
+    await toPresentable(env, shipmentId);
+    await present(env, shipmentId);
+    expect(Number((await env.core.getShipment(shipmentId)).phase)).to.equal(Phase.Presented);
   });
 });

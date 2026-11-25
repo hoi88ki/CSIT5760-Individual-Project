@@ -3,14 +3,22 @@ const { ethers } = require("hardhat");
 
 // Enum mirrors (Solidity enums are exposed as uint8 by ethers).
 const Incoterm = { EXW: 0, FOB: 1, CIF: 2, DDP: 3 };
+const PaymentTerm = { Sight: 0, Deferred: 1 };
 const Phase = {
-  Created: 0,
-  LCFunded: 1,
-  PickedUp: 2,
-  LoadedOnVessel: 3,
-  Delivered: 4,
-  Settled: 5,
-  Reclaimed: 6,
+  OrderPlaced: 0,
+  LCIssued: 1,
+  Shipped: 2,
+  Presented: 3,
+  Honored: 4,
+  Delivered: 5,
+  Settled: 6,
+  Reclaimed: 7,
+};
+const Custody = {
+  AtExporter: 0,
+  PickedUp: 1,
+  OnVessel: 2,
+  Delivered: 3,
 };
 const DocType = {
   CommercialInvoice: 0,
@@ -77,16 +85,19 @@ async function deployTradeChain({ settlementToken } = {}) {
   const loc = await ethers.getContractAt("LetterOfCredit", await core.letterOfCredit());
 
   // Demo funding (only possible when the core deployed its own TradeUSD).
+  // The bank funds the L/C escrow; the importer/exporter still move duty tokens.
   let canMint = true;
   try {
     await (await core.connect(admin).mint(importer.address, FUND)).wait();
     await (await core.connect(admin).mint(exporter.address, FUND)).wait();
+    await (await core.connect(admin).mint(bank.address, FUND * 10n)).wait();
   } catch {
     canMint = false;
   }
   if (canMint) {
-    await token.connect(importer).approve(coreAddr, ethers.MaxUint256);
-    await token.connect(exporter).approve(coreAddr, ethers.MaxUint256);
+    for (const holder of [importer, exporter, bank]) {
+      await token.connect(holder).approve(coreAddr, ethers.MaxUint256);
+    }
   }
 
   return {
@@ -114,7 +125,7 @@ async function futureDeadline(days = 30) {
 }
 
 /**
- * Importer opens an order and the named exporter creates the shipment.
+ * Importer applies for an L/C; the issuing bank issues and funds it; the named exporter ships.
  * @returns {{ orderId: bigint, shipmentId: bigint }}
  */
 async function createOrderAndShipment(
@@ -122,7 +133,10 @@ async function createOrderAndShipment(
   {
     importer = env.importer,
     exporter = env.exporter,
+    bank = env.bank,
     term = Incoterm.FOB,
+    paymentTerm = PaymentTerm.Sight,
+    deferredDays = 0n,
     lcAmount = LC,
     deadline,
     invoiceCID = CID.invoice,
@@ -130,16 +144,14 @@ async function createOrderAndShipment(
   } = {}
 ) {
   if (deadline === undefined) deadline = await futureDeadline();
-  await env.core.connect(importer).createOrder(exporter.address, term, lcAmount, deadline);
+  await env.core
+    .connect(importer)
+    .createOrder(exporter.address, term, lcAmount, deadline, paymentTerm, deferredDays);
   const orderId = await env.core.orderCount();
+  await env.core.connect(bank).issueLetterOfCredit(orderId);
   await env.core.connect(exporter).createShipment(orderId, invoiceCID, packingCID);
   const shipmentId = await env.core.shipmentCount();
   return { orderId, shipmentId };
-}
-
-/** Importer escrows the L/C amount. */
-async function fundLC(env, shipmentId, importer = env.importer) {
-  await env.core.connect(importer).openLetterOfCredit(shipmentId);
 }
 
 /** Anchor a document via the appropriate role. */
@@ -147,22 +159,47 @@ async function anchor(env, shipmentId, docType, cid, signer) {
   await env.core.connect(signer).anchorDocument(shipmentId, docType, cid);
 }
 
-/** Drive a shipment to the "on vessel" state for the given Incoterm (docs + milestones). */
-async function toLoadedOnVessel(env, id, term) {
+/** Anchor every presentation certificate the Incoterm stipulates (invoice/packing already anchored). */
+async function anchorPresentationCertificates(env, id, termArg) {
+  const term = termArg ?? Number((await env.core.getShipment(id)).term);
   if (term !== Incoterm.EXW) {
     await env.core.connect(env.verifier).anchorDocument(id, DocType.InspectionCertificate, CID.inspection);
   }
   if (term === Incoterm.CIF) {
     await env.core.connect(env.verifier).anchorDocument(id, DocType.InsuranceCertificate, CID.insurance);
   }
+  if (term === Incoterm.DDP) {
+    await env.core.connect(env.exporter).anchorDocument(id, DocType.CertificateOfOrigin, CID.coo);
+    await env.core.connect(env.verifier).anchorDocument(id, DocType.CustomsClearance, CID.clearance);
+  }
+}
+
+/**
+ * Drive a shipment from "shipped" to "presentable": anchor the stipulated certificates and
+ * complete custody up to vessel loading (the B/L is part of every presentation set).
+ */
+async function toPresentable(env, id, term) {
+  await anchorPresentationCertificates(env, id, term);
   await env.core.connect(env.logistics).confirmPickup(id);
   await env.core.connect(env.logistics).confirmVesselLoading(id, CID.bl);
+}
+
+/** Beneficiary records the presentation of the stipulated documents. */
+function present(env, shipmentId, exporter = env.exporter) {
+  return env.core.connect(exporter).presentDocuments(shipmentId);
+}
+
+/** Issuing bank examines and honors a presented credit. */
+function honor(env, shipmentId, bank = env.bank) {
+  return env.core.connect(bank).honorPresentation(shipmentId);
 }
 
 module.exports = {
   ethers,
   Incoterm,
+  PaymentTerm,
   Phase,
+  Custody,
   DocType,
   CID,
   UNIT,
@@ -171,7 +208,9 @@ module.exports = {
   deployTradeChain,
   futureDeadline,
   createOrderAndShipment,
-  fundLC,
   anchor,
-  toLoadedOnVessel,
+  anchorPresentationCertificates,
+  toPresentable,
+  present,
+  honor,
 };

@@ -3,76 +3,217 @@ const { ethers } = require("hardhat");
 const { loadFixture, time } = require("@nomicfoundation/hardhat-network-helpers");
 const {
   Incoterm,
+  PaymentTerm,
   Phase,
   DocType,
   CID,
   LC,
+  UNIT,
   deployTradeChain,
   futureDeadline,
 } = require("./helpers/fixture");
 
-describe("Orders, shipment creation & L/C funding", function () {
+describe("Orders, L/C issuance & shipment creation", function () {
   const fixture = deployTradeChain;
 
-  describe("createOrder", function () {
-    it("lets an importer open an order naming an exporter", async function () {
+  describe("createOrder (L/C application)", function () {
+    it("lets an importer apply for a credit naming the beneficiary and payment terms", async function () {
       const env = await loadFixture(fixture);
       const deadline = await futureDeadline();
 
-      await expect(env.core.connect(env.importer).createOrder(env.exporter.address, Incoterm.FOB, LC, deadline))
+      await expect(
+        env.core
+          .connect(env.importer)
+          .createOrder(env.exporter.address, Incoterm.FOB, LC, deadline, PaymentTerm.Deferred, 10n)
+      )
         .to.emit(env.core, "OrderCreated")
-        .withArgs(1n, env.importer.address, env.exporter.address, Incoterm.FOB, LC, deadline);
+        .withArgs(
+          1n,
+          env.importer.address,
+          env.exporter.address,
+          Incoterm.FOB,
+          PaymentTerm.Deferred,
+          10n,
+          LC,
+          deadline
+        );
 
       expect(await env.core.orderCount()).to.equal(1n);
       const order = await env.core.getOrder(1n);
       expect(order.importer).to.equal(env.importer.address);
       expect(order.exporter).to.equal(env.exporter.address);
       expect(order.term).to.equal(Incoterm.FOB);
+      expect(order.paymentTerm).to.equal(PaymentTerm.Deferred);
+      expect(order.deferredDays).to.equal(10n);
       expect(order.lcAmount).to.equal(LC);
       expect(order.deadline).to.equal(deadline);
-      expect(order.fulfilled).to.equal(false);
-      expect(order.shipmentId).to.equal(0n);
+
+      // The trade record is opened in OrderPlaced: nothing funded, nothing shipped.
+      const s = await env.core.getShipment(1n);
+      expect(s.phase).to.equal(Phase.OrderPlaced);
+      expect(s.custody).to.equal(0); // AtExporter
+      expect(s.riskHolder).to.equal(env.exporter.address);
     });
 
     it("rejects non-importer callers", async function () {
       const env = await loadFixture(fixture);
       await expect(
-        env.core.connect(env.exporter).createOrder(env.exporter.address, Incoterm.FOB, LC, await futureDeadline())
+        env.core
+          .connect(env.exporter)
+          .createOrder(env.exporter.address, Incoterm.FOB, LC, await futureDeadline(), PaymentTerm.Sight, 0n)
       ).to.be.revertedWithCustomError(env.core, "AccessControlUnauthorizedAccount");
     });
 
     it("rejects zero exporter, zero amount and non-future deadlines", async function () {
       const env = await loadFixture(fixture);
       await expect(
-        env.core.connect(env.importer).createOrder(ethers.ZeroAddress, Incoterm.FOB, LC, await futureDeadline())
+        env.core
+          .connect(env.importer)
+          .createOrder(ethers.ZeroAddress, Incoterm.FOB, LC, await futureDeadline(), PaymentTerm.Sight, 0n)
       ).to.be.revertedWithCustomError(env.tracker, "ZeroAddress");
 
       await expect(
-        env.core.connect(env.importer).createOrder(env.exporter.address, Incoterm.FOB, 0, await futureDeadline())
+        env.core
+          .connect(env.importer)
+          .createOrder(env.exporter.address, Incoterm.FOB, 0, await futureDeadline(), PaymentTerm.Sight, 0n)
       ).to.be.revertedWithCustomError(env.tracker, "InvalidAmount");
 
       const past = BigInt(await time.latest()) - 1n;
       await expect(
-        env.core.connect(env.importer).createOrder(env.exporter.address, Incoterm.FOB, LC, past)
+        env.core
+          .connect(env.importer)
+          .createOrder(env.exporter.address, Incoterm.FOB, LC, past, PaymentTerm.Sight, 0n)
       ).to.be.revertedWithCustomError(env.tracker, "InvalidDeadline");
+    });
+
+    it("sight credits must request no deferral; deferred credits need a deferral window", async function () {
+      const env = await loadFixture(fixture);
+      const deadline = await futureDeadline();
+
+      await expect(
+        env.core
+          .connect(env.importer)
+          .createOrder(env.exporter.address, Incoterm.FOB, LC, deadline, PaymentTerm.Sight, 5n)
+      ).to.be.revertedWithCustomError(env.tracker, "InvalidDeferral");
+
+      await expect(
+        env.core
+          .connect(env.importer)
+          .createOrder(env.exporter.address, Incoterm.FOB, LC, deadline, PaymentTerm.Deferred, 0n)
+      ).to.be.revertedWithCustomError(env.tracker, "InvalidDeferral");
+
+      await env.core
+        .connect(env.importer)
+        .createOrder(env.exporter.address, Incoterm.FOB, LC, deadline, PaymentTerm.Deferred, 5n);
+      expect((await env.core.getOrder(1n)).deferredDays).to.equal(5n);
+    });
+  });
+
+  describe("issueLetterOfCredit (issuing bank)", function () {
+    async function apply(env, opts = {}) {
+      const deadline = opts.deadline || (await futureDeadline());
+      await env.core
+        .connect(env.importer)
+        .createOrder(
+          env.exporter.address,
+          opts.term ?? Incoterm.CIF,
+          opts.lcAmount ?? LC,
+          deadline,
+          opts.paymentTerm ?? PaymentTerm.Sight,
+          opts.deferredDays ?? 0n
+        );
+      return await env.core.orderCount();
+    }
+
+    it("the issuing bank — not the importer — funds the escrow", async function () {
+      const env = await loadFixture(fixture);
+      const orderId = await apply(env);
+
+      const locAddr = await env.loc.getAddress();
+      const importerBefore = await env.token.balanceOf(env.importer.address);
+      const bankBefore = await env.token.balanceOf(env.bank.address);
+      const escrowBefore = await env.token.balanceOf(locAddr);
+
+      await expect(env.core.connect(env.bank).issueLetterOfCredit(orderId))
+        .to.emit(env.core, "LetterOfCreditIssued")
+        .withArgs(orderId, env.bank.address, env.exporter.address, LC, PaymentTerm.Sight, 0n, 0b111011);
+
+      expect(await env.token.balanceOf(locAddr)).to.equal(escrowBefore + LC);
+      expect(await env.token.balanceOf(env.bank.address)).to.equal(bankBefore - LC);
+      expect(await env.token.balanceOf(env.importer.address)).to.equal(importerBefore); // untouched
+
+      const lc = await env.core.getLC(orderId);
+      expect(lc.issued).to.equal(true);
+      expect(lc.issuingBank).to.equal(env.bank.address);
+      expect(lc.beneficiary).to.equal(env.exporter.address);
+      expect(lc.amount).to.equal(LC);
+      expect(lc.requiredDocs).to.equal(0b111011); // CIF stipulated set
+
+      const s = await env.core.getShipment(orderId);
+      expect(s.phase).to.equal(Phase.LCIssued);
+    });
+
+    it("only a bank may issue", async function () {
+      const env = await loadFixture(fixture);
+      const orderId = await apply(env);
+      await expect(env.core.connect(env.importer).issueLetterOfCredit(orderId)).to.be.revertedWithCustomError(
+        env.core,
+        "AccessControlUnauthorizedAccount"
+      );
+      await expect(env.core.connect(env.outsider).issueLetterOfCredit(orderId)).to.be.revertedWithCustomError(
+        env.core,
+        "AccessControlUnauthorizedAccount"
+      );
+    });
+
+    it("reverts on an unknown application, a second issuance and an expired application", async function () {
+      const env = await loadFixture(fixture);
+      await expect(env.core.connect(env.bank).issueLetterOfCredit(999n)).to.be.revertedWithCustomError(
+        env.core,
+        "ShipmentNotFound"
+      );
+
+      const orderId = await apply(env);
+      await env.core.connect(env.bank).issueLetterOfCredit(orderId);
+      await expect(env.core.connect(env.bank).issueLetterOfCredit(orderId)).to.be.revertedWithCustomError(
+        env.core,
+        "InvalidState"
+      );
+
+      const shortDeadline = BigInt(await time.latest()) + 2n;
+      const expired = await apply(env, { deadline: shortDeadline });
+      await time.increaseTo(shortDeadline + 1n);
+      await expect(env.core.connect(env.bank).issueLetterOfCredit(expired)).to.be.revertedWithCustomError(
+        env.core,
+        "CreditExpired"
+      );
+    });
+
+    it("reverts when the bank has not approved the core", async function () {
+      const env = await loadFixture(fixture);
+      const orderId = await apply(env);
+      await env.token.connect(env.bank).approve(await env.core.getAddress(), 0);
+      await expect(env.core.connect(env.bank).issueLetterOfCredit(orderId)).to.be.revertedWithCustomError(
+        env.token,
+        "ERC20InsufficientAllowance"
+      );
     });
   });
 
   describe("createShipment", function () {
-    it("only the named exporter may accept the order", async function () {
-      const env = await loadFixture(fixture);
-      await env.core.connect(env.importer).createOrder(env.exporter.address, Incoterm.FOB, LC, await futureDeadline());
-
-      await env.core.connect(env.admin).grantRoles([await env.core.ROLE_EXPORTER()], [env.outsider.address]);
-      await expect(
-        env.core.connect(env.outsider).createShipment(1n, CID.invoice, CID.packing)
-      ).to.be.revertedWithCustomError(env.tracker, "NotOrderedExporter");
-    });
-
-    it("creates the shipment, anchors invoice + packing list and escrows the title NFT", async function () {
+    it("the named exporter may ship only after the credit is issued and operative", async function () {
       const env = await loadFixture(fixture);
       const deadline = await futureDeadline();
-      await env.core.connect(env.importer).createOrder(env.exporter.address, Incoterm.FOB, LC, deadline);
+      await env.core
+        .connect(env.importer)
+        .createOrder(env.exporter.address, Incoterm.FOB, LC, deadline, PaymentTerm.Sight, 0n);
+
+      // Application recorded but the bank has not issued: shipping must revert.
+      await expect(
+        env.core.connect(env.exporter).createShipment(1n, CID.invoice, CID.packing)
+      ).to.be.revertedWithCustomError(env.core, "InvalidState");
+
+      await env.core.connect(env.bank).issueLetterOfCredit(1n);
 
       await expect(env.core.connect(env.exporter).createShipment(1n, CID.invoice, CID.packing))
         .to.emit(env.core, "ShipmentCreated")
@@ -80,7 +221,7 @@ describe("Orders, shipment creation & L/C funding", function () {
         .and.to.emit(env.registry, "DocumentAnchored");
 
       const shipment = await env.core.getShipment(1n);
-      expect(shipment.phase).to.equal(Phase.Created);
+      expect(shipment.phase).to.equal(Phase.Shipped);
       expect(shipment.importer).to.equal(env.importer.address);
       expect(shipment.exporter).to.equal(env.exporter.address);
       expect(shipment.riskHolder).to.equal(env.exporter.address);
@@ -90,15 +231,28 @@ describe("Orders, shipment creation & L/C funding", function () {
 
       // Title NFT minted to the core (escrow).
       expect(await env.nft.ownerOf(1n)).to.equal(await env.core.getAddress());
-
-      const order = await env.core.getOrder(1n);
-      expect(order.fulfilled).to.equal(true);
-      expect(order.shipmentId).to.equal(1n);
     });
 
-    it("rejects an empty invoice CID and a fulfilled order", async function () {
+    it("rejects an exporter other than the named beneficiary", async function () {
       const env = await loadFixture(fixture);
-      await env.core.connect(env.importer).createOrder(env.exporter.address, Incoterm.FOB, LC, await futureDeadline());
+      await env.core
+        .connect(env.importer)
+        .createOrder(env.exporter.address, Incoterm.FOB, LC, await futureDeadline(), PaymentTerm.Sight, 0n);
+      await env.core.connect(env.bank).issueLetterOfCredit(1n);
+
+      await env.core.connect(env.admin).grantRoles([await env.core.ROLE_EXPORTER()], [env.outsider.address]);
+      await expect(
+        env.core.connect(env.outsider).createShipment(1n, CID.invoice, CID.packing)
+      ).to.be.revertedWithCustomError(env.core, "NotBeneficiary");
+    });
+
+    it("rejects an empty invoice CID and a second shipment for the same credit", async function () {
+      const env = await loadFixture(fixture);
+      await env.core
+        .connect(env.importer)
+        .createOrder(env.exporter.address, Incoterm.FOB, LC, await futureDeadline(), PaymentTerm.Sight, 0n);
+      await env.core.connect(env.bank).issueLetterOfCredit(1n);
+
       await expect(
         env.core.connect(env.exporter).createShipment(1n, "", CID.packing)
       ).to.be.revertedWithCustomError(env.registry, "EmptyCID");
@@ -106,59 +260,62 @@ describe("Orders, shipment creation & L/C funding", function () {
       await env.core.connect(env.exporter).createShipment(1n, CID.invoice, CID.packing);
       await expect(
         env.core.connect(env.exporter).createShipment(1n, CID.invoice, CID.packing)
-      ).to.be.revertedWithCustomError(env.tracker, "OrderAlreadyFulfilled");
+      ).to.be.revertedWithCustomError(env.core, "InvalidState");
     });
 
-    it("rejects an unknown order", async function () {
+    it("rejects an unknown order and shipping after the credit expired", async function () {
       const env = await loadFixture(fixture);
       await expect(
         env.core.connect(env.exporter).createShipment(999n, CID.invoice, CID.packing)
-      ).to.be.revertedWithCustomError(env.tracker, "OrderNotFound");
+      ).to.be.revertedWithCustomError(env.core, "ShipmentNotFound");
+
+      const deadline = BigInt(await time.latest()) + 3n;
+      await env.core
+        .connect(env.importer)
+        .createOrder(env.exporter.address, Incoterm.FOB, LC, deadline, PaymentTerm.Sight, 0n);
+      await env.core.connect(env.bank).issueLetterOfCredit(1n);
+      await time.increaseTo(deadline + 1n);
+      await expect(
+        env.core.connect(env.exporter).createShipment(1n, CID.invoice, CID.packing)
+      ).to.be.revertedWithCustomError(env.tracker, "InvalidDeadline");
     });
   });
 
-  describe("openLetterOfCredit", function () {
-    it("escrows the exact L/C amount into the LetterOfCredit", async function () {
+  describe("presentDocuments", function () {
+    it("only the beneficiary may present, and only once the goods are shipped", async function () {
       const env = await loadFixture(fixture);
-      const { shipmentId } = await (async () => {
-        await env.core.connect(env.importer).createOrder(env.exporter.address, Incoterm.FOB, LC, await futureDeadline());
-        await env.core.connect(env.exporter).createShipment(1n, CID.invoice, CID.packing);
-        return { shipmentId: 1n };
-      })();
+      await env.core
+        .connect(env.importer)
+        .createOrder(env.exporter.address, Incoterm.FOB, LC, await futureDeadline(), PaymentTerm.Sight, 0n);
+      await env.core.connect(env.bank).issueLetterOfCredit(1n);
 
-      const locAddr = await env.loc.getAddress();
-      const before = await env.token.balanceOf(locAddr);
+      await expect(env.core.connect(env.exporter).presentDocuments(1n)).to.be.revertedWithCustomError(
+        env.core,
+        "InvalidState"
+      );
 
-      await expect(env.core.connect(env.importer).openLetterOfCredit(shipmentId))
-        .to.emit(env.core, "LetterOfCreditOpened")
-        .withArgs(shipmentId, env.importer.address, LC);
-
-      expect(await env.token.balanceOf(locAddr)).to.equal(before + LC);
-      const s = await env.core.getShipment(shipmentId);
-      expect(s.phase).to.equal(Phase.LCFunded);
-      expect((await env.loc.getLC(shipmentId)).funded).to.equal(true);
-    });
-
-    it("reverts when the importer has not approved the core", async function () {
-      const env = await loadFixture(fixture);
-      await env.core.connect(env.importer).createOrder(env.exporter.address, Incoterm.FOB, LC, await futureDeadline());
       await env.core.connect(env.exporter).createShipment(1n, CID.invoice, CID.packing);
+      await env.core.connect(env.verifier).anchorDocument(1n, DocType.InspectionCertificate, CID.inspection);
+      await env.core.connect(env.logistics).confirmPickup(1n);
+      await env.core.connect(env.logistics).confirmVesselLoading(1n, CID.bl);
 
-      await env.token.connect(env.importer).approve(await env.core.getAddress(), 0);
-      await expect(
-        env.core.connect(env.importer).openLetterOfCredit(1n)
-      ).to.be.revertedWithCustomError(env.token, "ERC20InsufficientAllowance");
-    });
+      await env.core.connect(env.admin).grantRoles([await env.core.ROLE_EXPORTER()], [env.outsider.address]);
+      await expect(env.core.connect(env.outsider).presentDocuments(1n)).to.be.revertedWithCustomError(
+        env.core,
+        "NotBeneficiary"
+      );
 
-    it("reverts if the funding account is not the order's importer", async function () {
-      const env = await loadFixture(fixture);
-      await env.core.connect(env.importer).createOrder(env.exporter.address, Incoterm.FOB, LC, await futureDeadline());
-      await env.core.connect(env.exporter).createShipment(1n, CID.invoice, CID.packing);
+      await expect(env.core.connect(env.exporter).presentDocuments(1n))
+        .to.emit(env.core, "DocumentsPresented")
+        .withArgs(1n, env.exporter.address);
+      expect((await env.core.getShipment(1n)).phase).to.equal(Phase.Presented);
+      expect((await env.core.getLC(1n)).presented).to.equal(true);
 
-      await env.core.connect(env.admin).grantRoles([await env.core.ROLE_IMPORTER()], [env.outsider.address]);
-      await expect(
-        env.core.connect(env.outsider).openLetterOfCredit(1n)
-      ).to.be.revertedWithCustomError(env.core, "Unauthorized");
+      // A second presentation reverts (the phase has moved on).
+      await expect(env.core.connect(env.exporter).presentDocuments(1n)).to.be.revertedWithCustomError(
+        env.core,
+        "InvalidState"
+      );
     });
   });
 });

@@ -2,13 +2,17 @@ const { expect } = require("chai");
 const { loadFixture, time } = require("@nomicfoundation/hardhat-network-helpers");
 const {
   Incoterm,
+  PaymentTerm,
+  Phase,
   DocType,
   CID,
   LC,
   deployTradeChain,
-  createOrderAndShipment,
-  fundLC,
   futureDeadline,
+  createOrderAndShipment,
+  toPresentable,
+  present,
+  honor,
 } = require("./helpers/fixture");
 
 describe("Access control & state-machine guards", function () {
@@ -18,13 +22,12 @@ describe("Access control & state-machine guards", function () {
     it("only logistics may confirm pickup and loading", async function () {
       const env = await loadFixture(fixture);
       const { shipmentId } = await createOrderAndShipment(env, { term: Incoterm.FOB });
-      await fundLC(env, shipmentId);
+      await env.core.connect(env.verifier).anchorDocument(shipmentId, DocType.InspectionCertificate, CID.inspection);
 
       await expect(env.core.connect(env.exporter).confirmPickup(shipmentId)).to.be.revertedWithCustomError(
         env.core,
         "AccessControlUnauthorizedAccount"
       );
-      await env.core.connect(env.verifier).anchorDocument(shipmentId, DocType.InspectionCertificate, CID.inspection);
       await env.core.connect(env.logistics).confirmPickup(shipmentId);
       await expect(
         env.core.connect(env.importer).confirmVesselLoading(shipmentId, CID.bl)
@@ -34,11 +37,7 @@ describe("Access control & state-machine guards", function () {
     it("only the shipment importer may confirm final delivery", async function () {
       const env = await loadFixture(fixture);
       const { shipmentId } = await createOrderAndShipment(env, { term: Incoterm.CIF });
-      await fundLC(env, shipmentId);
-      await env.core.connect(env.verifier).anchorDocument(shipmentId, DocType.InspectionCertificate, CID.inspection);
-      await env.core.connect(env.verifier).anchorDocument(shipmentId, DocType.InsuranceCertificate, CID.insurance);
-      await env.core.connect(env.logistics).confirmPickup(shipmentId);
-      await env.core.connect(env.logistics).confirmVesselLoading(shipmentId, CID.bl);
+      await toPresentable(env, shipmentId);
 
       await expect(env.core.connect(env.exporter).confirmFinalDelivery(shipmentId)).to.be.revertedWithCustomError(
         env.core,
@@ -53,12 +52,30 @@ describe("Access control & state-machine guards", function () {
     });
   });
 
+  describe("examination roles", function () {
+    it("only the bank may honor a presentation", async function () {
+      const env = await loadFixture(fixture);
+      const { shipmentId } = await createOrderAndShipment(env, { term: Incoterm.FOB });
+      await toPresentable(env, shipmentId);
+      await present(env, shipmentId);
+
+      await expect(env.core.connect(env.importer).honorPresentation(shipmentId)).to.be.revertedWithCustomError(
+        env.core,
+        "AccessControlUnauthorizedAccount"
+      );
+      await expect(env.core.connect(env.outsider).honorPresentation(shipmentId)).to.be.revertedWithCustomError(
+        env.core,
+        "AccessControlUnauthorizedAccount"
+      );
+      await expect(honor(env, shipmentId)).to.not.be.reverted;
+    });
+  });
+
   describe("customs duty roles", function () {
     it("non-DDP duty is paid by the importer; DDP duty by the exporter", async function () {
       const env = await loadFixture(fixture);
 
       const a = await createOrderAndShipment(env, { term: Incoterm.FOB });
-      await fundLC(env, a.shipmentId);
       await expect(env.core.connect(env.exporter).payCustomsDuty(a.shipmentId, 1n)).to.be.revertedWithCustomError(
         env.core,
         "Unauthorized"
@@ -66,7 +83,6 @@ describe("Access control & state-machine guards", function () {
       await env.core.connect(env.importer).payCustomsDuty(a.shipmentId, 1n);
 
       const b = await createOrderAndShipment(env, { term: Incoterm.DDP });
-      await fundLC(env, b.shipmentId);
       await expect(env.core.connect(env.importer).payCustomsDuty(b.shipmentId, 1n)).to.be.revertedWithCustomError(
         env.core,
         "Unauthorized"
@@ -77,31 +93,35 @@ describe("Access control & state-machine guards", function () {
     it("cannot pay duty twice", async function () {
       const env = await loadFixture(fixture);
       const { shipmentId } = await createOrderAndShipment(env, { term: Incoterm.FOB });
-      await fundLC(env, shipmentId);
       await env.core.connect(env.importer).payCustomsDuty(shipmentId, 1n);
       await expect(
         env.core.connect(env.importer).payCustomsDuty(shipmentId, 1n)
       ).to.be.revertedWithCustomError(env.loc, "DutyAlreadyPaid");
     });
 
-    it("cannot pay duty before the L/C is funded", async function () {
+    it("cannot pay duty before the goods are shipped", async function () {
       const env = await loadFixture(fixture);
-      const { shipmentId } = await createOrderAndShipment(env, { term: Incoterm.FOB });
-      await expect(
-        env.core.connect(env.importer).payCustomsDuty(shipmentId, 1n)
-      ).to.be.revertedWithCustomError(env.core, "InvalidStateRange");
+      await env.core
+        .connect(env.importer)
+        .createOrder(env.exporter.address, Incoterm.FOB, LC, await futureDeadline(), PaymentTerm.Sight, 0n);
+      await env.core.connect(env.bank).issueLetterOfCredit(1n);
+      await expect(env.core.connect(env.importer).payCustomsDuty(1n, 1n)).to.be.revertedWithCustomError(
+        env.core,
+        "InvalidStateRange"
+      );
     });
 
-    it("cannot escrow duty once the L/C has been paid (EXW pays at pickup)", async function () {
+    it("cannot escrow duty once the credit has paid (sight honor releases the proceeds)", async function () {
       const env = await loadFixture(fixture);
       const { shipmentId } = await createOrderAndShipment(env, { term: Incoterm.EXW });
-      await fundLC(env, shipmentId);
+      await toPresentable(env, shipmentId);
+      await present(env, shipmentId);
+      await honor(env, shipmentId);
 
-      // EXW pays out at pickup, so escrowing duty afterwards would strand it in LetterOfCredit.
-      await env.core.connect(env.logistics).confirmPickup(shipmentId);
-      await expect(
-        env.core.connect(env.importer).payCustomsDuty(shipmentId, 1n)
-      ).to.be.revertedWithCustomError(env.core, "LCAlreadySettled");
+      await expect(env.core.connect(env.importer).payCustomsDuty(shipmentId, 1n)).to.be.revertedWithCustomError(
+        env.core,
+        "LCAlreadySettled"
+      );
     });
   });
 
@@ -110,36 +130,71 @@ describe("Access control & state-machine guards", function () {
       const env = await loadFixture(fixture);
       const { shipmentId } = await createOrderAndShipment(env, { term: Incoterm.FOB });
 
-      await expect(env.core.connect(env.logistics).confirmPickup(shipmentId)).to.be.revertedWithCustomError(
-        env.core,
-        "InvalidState"
-      );
+      // Pickup before the goods are handed over is impossible (the record exists but custody has
+      // not started); the goods must ship first.
+      await expect(
+        env.core.connect(env.logistics).confirmPickup(999n)
+      ).to.be.revertedWithCustomError(env.core, "ShipmentNotFound");
 
-      await fundLC(env, shipmentId);
-      await expect(env.core.connect(env.importer).openLetterOfCredit(shipmentId)).to.be.revertedWithCustomError(
-        env.core,
-        "InvalidState"
-      );
       await expect(
         env.core.connect(env.logistics).confirmVesselLoading(shipmentId, CID.bl)
-      ).to.be.revertedWithCustomError(env.core, "InvalidState");
+      ).to.be.revertedWithCustomError(env.core, "InvalidCustody");
     });
 
-    it("reverts for unknown shipments", async function () {
+    it("custody cannot start before the exporter ships", async function () {
+      const env = await loadFixture(fixture);
+      await env.core
+        .connect(env.importer)
+        .createOrder(env.exporter.address, Incoterm.FOB, LC, await futureDeadline(), PaymentTerm.Sight, 0n);
+      await env.core.connect(env.bank).issueLetterOfCredit(1n);
+
+      // Phase is LCIssued (credit issued) but the goods have not shipped.
+      await expect(env.core.connect(env.logistics).confirmPickup(1n)).to.be.revertedWithCustomError(
+        env.core,
+        "InvalidState"
+      );
+    });
+
+    it("honor requires a recorded presentation", async function () {
+      const env = await loadFixture(fixture);
+      const { shipmentId } = await createOrderAndShipment(env, { term: Incoterm.FOB });
+      await toPresentable(env, shipmentId);
+
+      await expect(honor(env, shipmentId)).to.be.revertedWithCustomError(env.core, "InvalidState");
+    });
+
+    it("an already-honored presentation cannot be honored again", async function () {
+      const env = await loadFixture(fixture);
+      const { shipmentId } = await createOrderAndShipment(env, { term: Incoterm.FOB });
+      await toPresentable(env, shipmentId);
+      await present(env, shipmentId);
+      await honor(env, shipmentId);
+
+      // The sight credit already paid: the settled guard fires before the honored guard.
+      await expect(honor(env, shipmentId)).to.be.revertedWithCustomError(env.loc, "AlreadySettled");
+    });
+
+    it("reverts for unknown trades", async function () {
       const env = await loadFixture(fixture);
       await expect(env.core.connect(env.logistics).confirmPickup(1234n)).to.be.revertedWithCustomError(
         env.core,
         "ShipmentNotFound"
       );
+      await expect(env.core.connect(env.bank).honorPresentation(4321n)).to.be.revertedWithCustomError(
+        env.core,
+        "ShipmentNotFound"
+      );
     });
 
-    it("advancing a reclaimed shipment reverts", async function () {
+    it("advancing a reclaimed trade reverts", async function () {
       const env = await loadFixture(fixture);
-      const { shipmentId } = await createOrderAndShipment(env, { term: Incoterm.FOB });
-      await fundLC(env, shipmentId);
-      await time.increaseTo(Number((await env.core.getShipment(shipmentId)).deadline) + 1);
-      await env.core.connect(env.importer).reclaimExpiredLC(shipmentId);
-      await expect(env.core.connect(env.logistics).confirmPickup(shipmentId)).to.be.revertedWithCustomError(
+      await env.core
+        .connect(env.importer)
+        .createOrder(env.exporter.address, Incoterm.FOB, LC, await futureDeadline(), PaymentTerm.Sight, 0n);
+      await env.core.connect(env.bank).issueLetterOfCredit(1n);
+      await time.increaseTo(Number((await env.core.getShipment(1n)).deadline) + 1);
+      await env.core.connect(env.importer).reclaimExpiredLC(1n);
+      await expect(env.core.connect(env.logistics).confirmPickup(1n)).to.be.revertedWithCustomError(
         env.core,
         "InvalidStateRange"
       );
@@ -169,10 +224,13 @@ describe("Access control & state-machine guards", function () {
     });
   });
 
-  describe("creation & funding guards", function () {
+  describe("creation & issuance guards", function () {
     it("createShipment requires the exporter role", async function () {
       const env = await loadFixture(fixture);
-      await env.core.connect(env.importer).createOrder(env.exporter.address, Incoterm.FOB, LC, await futureDeadline());
+      await env.core
+        .connect(env.importer)
+        .createOrder(env.exporter.address, Incoterm.FOB, LC, await futureDeadline(), PaymentTerm.Sight, 0n);
+      await env.core.connect(env.bank).issueLetterOfCredit(1n);
       await expect(
         env.core.connect(env.outsider).createShipment(1n, CID.invoice, CID.packing)
       ).to.be.revertedWithCustomError(env.core, "AccessControlUnauthorizedAccount");
@@ -181,19 +239,35 @@ describe("Access control & state-machine guards", function () {
     it("createShipment rejects an order whose deadline has elapsed", async function () {
       const env = await loadFixture(fixture);
       const deadline = await futureDeadline(1);
-      await env.core.connect(env.importer).createOrder(env.exporter.address, Incoterm.FOB, LC, deadline);
+      await env.core
+        .connect(env.importer)
+        .createOrder(env.exporter.address, Incoterm.FOB, LC, deadline, PaymentTerm.Sight, 0n);
+      await env.core.connect(env.bank).issueLetterOfCredit(1n);
       await time.increaseTo(Number(deadline) + 1);
       await expect(
         env.core.connect(env.exporter).createShipment(1n, CID.invoice, CID.packing)
       ).to.be.revertedWithCustomError(env.tracker, "InvalidDeadline");
     });
 
-    it("openLetterOfCredit requires the importer role", async function () {
+    it("issueLetterOfCredit requires the bank role", async function () {
+      const env = await loadFixture(fixture);
+      await env.core
+        .connect(env.importer)
+        .createOrder(env.exporter.address, Incoterm.FOB, LC, await futureDeadline(), PaymentTerm.Sight, 0n);
+      await expect(env.core.connect(env.outsider).issueLetterOfCredit(1n)).to.be.revertedWithCustomError(
+        env.core,
+        "AccessControlUnauthorizedAccount"
+      );
+    });
+
+    it("presentDocuments requires the exporter role", async function () {
       const env = await loadFixture(fixture);
       const { shipmentId } = await createOrderAndShipment(env, { term: Incoterm.FOB });
-      await expect(
-        env.core.connect(env.outsider).openLetterOfCredit(shipmentId)
-      ).to.be.revertedWithCustomError(env.core, "AccessControlUnauthorizedAccount");
+      await toPresentable(env, shipmentId);
+      await expect(env.core.connect(env.outsider).presentDocuments(shipmentId)).to.be.revertedWithCustomError(
+        env.core,
+        "AccessControlUnauthorizedAccount"
+      );
     });
   });
 });

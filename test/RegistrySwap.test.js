@@ -4,11 +4,11 @@ const { loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
 const {
   Incoterm,
   Phase,
+  Custody,
   DocType,
   CID,
   deployTradeChain,
   createOrderAndShipment,
-  fundLC,
 } = require("./helpers/fixture");
 
 describe("Swappable DocumentRegistry & mounted module access control", function () {
@@ -66,9 +66,8 @@ describe("Swappable DocumentRegistry & mounted module access control", function 
       const env = await loadFixture(fixture);
       const second = await deploySecondRegistry(env);
 
-      // In-flight shipment anchored in the original registry.
+      // In-flight trade anchored in the original registry.
       const a = await createOrderAndShipment(env, { term: Incoterm.FOB });
-      await fundLC(env, a.shipmentId);
       await env.core.connect(env.verifier).anchorDocument(a.shipmentId, DocType.InspectionCertificate, CID.inspection);
 
       expect(await env.core.documentRegistryOf(a.shipmentId, DocType.InspectionCertificate)).to.equal(
@@ -79,7 +78,6 @@ describe("Swappable DocumentRegistry & mounted module access control", function 
 
       // New anchors land in the new registry ...
       const b = await createOrderAndShipment(env, { term: Incoterm.FOB });
-      await fundLC(env, b.shipmentId);
       await env.core.connect(env.verifier).anchorDocument(b.shipmentId, DocType.InspectionCertificate, CID.inspection);
       expect(await env.core.documentRegistryOf(b.shipmentId, DocType.InspectionCertificate)).to.equal(
         await second.getAddress()
@@ -90,8 +88,8 @@ describe("Swappable DocumentRegistry & mounted module access control", function 
       // ... while pre-swap anchors still resolve to the registry that holds them.
       expect(await env.core.hasValidDocument(a.shipmentId, DocType.InspectionCertificate)).to.equal(true);
       expect(await env.core.hasValidDocument(a.shipmentId, DocType.CommercialInvoice)).to.equal(true);
-      expect(await env.core.isCompliant(a.shipmentId, Phase.PickedUp)).to.equal(true);
-      expect(await env.core.isCompliant(b.shipmentId, Phase.PickedUp)).to.equal(true);
+      expect(await env.core.isCompliant(a.shipmentId, Custody.PickedUp)).to.equal(true);
+      expect(await env.core.isCompliant(b.shipmentId, Custody.PickedUp)).to.equal(true);
 
       // Revocation resolves to the registry that holds the document.
       await env.core.connect(env.verifier).revokeDocument(a.shipmentId, DocType.InspectionCertificate);

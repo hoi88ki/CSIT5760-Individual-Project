@@ -1,6 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { Incoterm, futureDeadline } = require("./helpers/fixture");
+const { Incoterm, PaymentTerm, Phase, futureDeadline } = require("./helpers/fixture");
 
 describe("Token units", function () {
   let admin, other, outsider;
@@ -65,8 +65,17 @@ describe("Token units", function () {
     }
 
     async function withShipment(tracker) {
-      await tracker.createOrder(other.address, outsider.address, Incoterm.FOB, 100n, await futureDeadline());
-      await tracker.fulfilOrder(1n, outsider.address);
+      await tracker.createOrder(
+        other.address,
+        outsider.address,
+        Incoterm.FOB,
+        PaymentTerm.Sight,
+        0n,
+        100n,
+        await futureDeadline()
+      );
+      await tracker.setPhase(1n, Phase.LCIssued);
+      await tracker.ship(1n, outsider.address);
     }
 
     it("mints, updates the URI and transfers the title (core only)", async function () {
