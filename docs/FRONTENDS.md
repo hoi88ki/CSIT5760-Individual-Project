@@ -11,7 +11,7 @@ TradeChain includes two browser interfaces that both connect to the same `TradeC
 
 1. Install and unlock MetaMask in the browser, then select the account that has the required TradeChain role.
 2. Select the chain where the core is deployed:
-   - **Sepolia:** chain ID `11155111`; the deployed (pre-rework) core address is in [`deployments/sepolia.json`](../deployments/sepolia.json).
+   - **Sepolia:** chain ID `11155111`; the deployed core address is in [`deployments/sepolia.json`](../deployments/sepolia.json) (the flow console's *Sepolia* preset points there).
    - **Local Hardhat:** chain ID `31337`; start `npx hardhat node`, deploy with `npx hardhat run scripts/deploy.js --network localhost`, and use the core address printed by the deployment script (also saved to `deployments/localhost.json`).
 3. Open the dashboard over `http://localhost` or another secure origin. In the React app, paste the core address and click **Connect MetaMask / Load**. In the standalone console, click **Connect wallet**, then **Load core** if needed.
 4. Review the connected account and chain before submitting. MetaMask displays a confirmation for each transaction; the selected account must hold the role required by that action.

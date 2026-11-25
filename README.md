@@ -244,6 +244,7 @@ Bank       forceFinalizeDelivery(id)                  → if the importer withho
 │   ├── RegistrySwap.test.js · Modules.test.js · Reentrancy.test.js · Tokens.test.js · Views.test.js
 ├── scripts/
 │   ├── deploy.js                       # deploy + wire the six contracts + roles
+│   ├── smoke.js                        # post-deployment check: one full sight credit on the live core
 │   ├── seed-demo.js                    # drive the credit workflow: issue → ship → present → honor → deliver
 │   ├── verify.js                       # Etherscan verification helper
 │   ├── ipfs-add.js                     # upload to a role's kubo node → CIDv1
@@ -375,14 +376,40 @@ upload/retrieve flow.
 
 ## 7. Sepolia Deployment (verified)
 
-Deployed and **source-verified** on **Ethereum Sepolia** (chainId 11155111) on 22 November 2026 — all
-six contracts; record in [`deployments/sepolia.json`](./deployments/sepolia.json). Every contract's
-source is published on Etherscan (append `#code` to each address).
+Deployed and **source-verified** on **Ethereum Sepolia** (chainId 11155111) on **25 November 2026** —
+all six contracts of the bank-issued documentary-credit suite; record in
+[`deployments/sepolia.json`](./deployments/sepolia.json). Every contract's source is published on
+Etherscan (append `#code` to each address).
 
-> **Note (25 November 2026).** This deployment predates the bank-issued documentary-credit rework
-> (application → issuance → shipment → presentation → honor): the on-chain code at these addresses
-> still implements the earlier importer-funded escrow with milestone payouts. It is kept as
-> deployment/verification evidence; redeploy to demo the new workflow.
+| Contract | Address |
+|----------|---------|
+| `TradeChainCore` | [`0xCcE6bd88756759B8A02318a61d37e15BB1781520`](https://sepolia.etherscan.io/address/0xCcE6bd88756759B8A02318a61d37e15BB1781520#code) |
+| `ShipmentTracker` (e-B/L ERC-721) | [`0x377fe5827EEa210e8AF670E7D61196F75f371feF`](https://sepolia.etherscan.io/address/0x377fe5827EEa210e8AF670E7D61196F75f371feF#code) |
+| `DocumentRegistry` (swappable) | [`0x6115942cc4573eC2690EEC4546166a8714595FC8`](https://sepolia.etherscan.io/address/0x6115942cc4573eC2690EEC4546166a8714595FC8#code) |
+| `ComplianceEngine` | [`0x343DFC53883256DB9441387CCfC5aa4BFe0d164e`](https://sepolia.etherscan.io/address/0x343DFC53883256DB9441387CCfC5aa4BFe0d164e#code) |
+| `LetterOfCredit` | [`0xCC67ec9baed27A00f0f1DD7AaBEa194fcbeb8abd`](https://sepolia.etherscan.io/address/0xCC67ec9baed27A00f0f1DD7AaBEa194fcbeb8abd#code) |
+| `TradeUSD` (ERC-20) | [`0xFf50c22D889C1D19F791565853c1FB4Ba4387475`](https://sepolia.etherscan.io/address/0xFf50c22D889C1D19F791565853c1FB4Ba4387475#code) |
+
+Deployer: `0xCE4b0826b1B5d4bEA67EED5212Ae0AA5ec6c8664`. In this demo deployment, the five
+operational roles initially point to the deployer address (one account can play every party); the
+admin can assign distinct wallets with `grantRoles`.
+
+Creation transactions: `TradeUSD`
+`0x6424e260a396ef74faeb00a0b66a61b76bd02a68f7e2d7469868c6b4e3c33f8f` (block 12207628) and
+`TradeChainCore`
+`0x87108ef9524d0125e283cab0140cc8e6278abfcd71c4456947fffb91e71d8399` (block 12207629) — the core's
+transaction also created the four companion contracts in its constructor.
+
+A post-deployment smoke test (`scripts/smoke.js`) drove one complete sight credit against this
+deployment on-chain: application → bank issuance (25,000 tUSD escrowed) → shipment → custody (no
+payment at milestones) → presentation → examination/honor (paid) → delivery → `Settled` with the
+title released.
+
+> The 22 November 2026 deployment
+> ([archived record](./deployments/sepolia-2026-11-22.json)) predates this rework: its on-chain code
+> still implements the earlier importer-funded escrow with milestone payouts and is kept only as
+> historical evidence (superseding the 5 November 2026 suite,
+> [archived record](./deployments/sepolia-2026-11-05.json)).
 
 | Contract | Address |
 |----------|---------|
@@ -473,10 +500,13 @@ ipfs cat <cid> --api /ip4/127.0.0.1/tcp/5011                          # another 
 
 ```bash
 npx hardhat run scripts/verify.js --network sepolia
+npx hardhat run scripts/smoke.js  --network sepolia
 ```
 
 - [ ] All six contracts show `Successfully verified contract <Name> on the block explorer`
 - [ ] The addresses in [§7](#7-sepolia-deployment-verified) open with `#code` on Sepolia Etherscan
+- [ ] `smoke.js` prints `SMOKE TEST PASSED`: one sight credit driven end-to-end on the live core
+      (application → bank issuance → shipment → custody → presentation → honor → `Settled`)
 
 ### F. Objective → evidence map
 

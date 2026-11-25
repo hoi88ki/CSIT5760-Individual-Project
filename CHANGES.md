@@ -55,6 +55,16 @@ examination → honor**, with custody and title following the Incoterm independe
   the bank's undertaking deterministic but unlike real contingent L/Cs; deferred terms are elapsed
   calendar time; a timely presentation can only be honored (no refusal/discrepancy notices yet).
   e-B/L title-transfer semantics and customs/logistics behavior are unchanged, as scoped.
+- **Sepolia redeployed (25 November 2026).** The first redeployment attempt failed on-chain with
+  `initcode is too big` — the rework pushed the core's initcode past the EIP-3860 cap that Sepolia
+  enforces (the local node's `allowUnlimitedContractSize` masked it). Fixed by compiling with
+  `metadata.bytecodeHash: none` and dropping the core-level duplicates of the module's
+  `LCIssued`/`LCPresented` events (initcode 49,334 → 48,950 B). The new suite is live and verified:
+  core `0xCcE6bd88756759B8A02318a61d37e15BB1781520` (all six contracts verified on Etherscan;
+  record in `deployments/sepolia.json`, previous deployment archived as
+  `deployments/sepolia-2026-11-22.json`). `scripts/smoke.js` drove one complete sight credit against
+  the live core — application → bank issuance (25,000 tUSD escrowed) → shipment → custody (no
+  payment at milestones) → presentation → examination/honor (paid) → delivery → `Settled`.
 
 ---
 
