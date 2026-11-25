@@ -420,33 +420,36 @@ Etherscan (append `#code` to each address).
 
 | Contract | Address |
 |----------|---------|
-| `TradeChainCore` | [`0xCcE6bd88756759B8A02318a61d37e15BB1781520`](https://sepolia.etherscan.io/address/0xCcE6bd88756759B8A02318a61d37e15BB1781520#code) |
-| `ShipmentTracker` (e-B/L ERC-721) | [`0x377fe5827EEa210e8AF670E7D61196F75f371feF`](https://sepolia.etherscan.io/address/0x377fe5827EEa210e8AF670E7D61196F75f371feF#code) |
-| `DocumentRegistry` (swappable) | [`0x6115942cc4573eC2690EEC4546166a8714595FC8`](https://sepolia.etherscan.io/address/0x6115942cc4573eC2690EEC4546166a8714595FC8#code) |
-| `ComplianceEngine` | [`0x343DFC53883256DB9441387CCfC5aa4BFe0d164e`](https://sepolia.etherscan.io/address/0x343DFC53883256DB9441387CCfC5aa4BFe0d164e#code) |
-| `LetterOfCredit` | [`0xCC67ec9baed27A00f0f1DD7AaBEa194fcbeb8abd`](https://sepolia.etherscan.io/address/0xCC67ec9baed27A00f0f1DD7AaBEa194fcbeb8abd#code) |
-| `TradeUSD` (ERC-20) | [`0xFf50c22D889C1D19F791565853c1FB4Ba4387475`](https://sepolia.etherscan.io/address/0xFf50c22D889C1D19F791565853c1FB4Ba4387475#code) |
+| `TradeChainCore` | [`0x34A657C2b68CCda1b696f03dEf8c0a7a8A8728a6`](https://sepolia.etherscan.io/address/0x34A657C2b68CCda1b696f03dEf8c0a7a8A8728a6#code) |
+| `ShipmentTracker` (e-B/L ERC-721) | [`0xEcA841E1f8aF5C89C823f4A081498A45c9b11818`](https://sepolia.etherscan.io/address/0xEcA841E1f8aF5C89C823f4A081498A45c9b11818#code) |
+| `DocumentRegistry` (swappable) | [`0xb9ca182d1e767704c7852Fe901632a530A1Ca897`](https://sepolia.etherscan.io/address/0xb9ca182d1e767704c7852Fe901632a530A1Ca897#code) |
+| `ComplianceEngine` | [`0xB194FB6344Ed009a4BaCA25626E8882121BC5470`](https://sepolia.etherscan.io/address/0xB194FB6344Ed009a4BaCA25626E8882121BC5470#code) |
+| `LetterOfCredit` | [`0xFaA7C6C17fE1043b9f354d9Bd3bA55e25199919C`](https://sepolia.etherscan.io/address/0xFaA7C6C17fE1043b9f354d9Bd3bA55e25199919C#code) |
+| `TradeUSD` (ERC-20) | [`0x2ecdfB141681C5330f015a2910AefC598209577A`](https://sepolia.etherscan.io/address/0x2ecdfB141681C5330f015a2910AefC598209577A#code) |
 
-Deployer: `0xCE4b0826b1B5d4bEA67EED5212Ae0AA5ec6c8664`. In this demo deployment, the five
-operational roles initially point to the deployer address (one account can play every party); the
-admin can assign distinct wallets with `grantRoles`.
+Deployer/admin: `0xCE4b0826b1B5d4bEA67EED5212Ae0AA5ec6c8664`. The five operational roles were then
+granted to **distinct wallets** (`scripts/setup-accounts.js`, keys in `.env`):
 
-Creation transactions: `TradeUSD`
-`0x6424e260a396ef74faeb00a0b66a61b76bd02a68f7e2d7469868c6b4e3c33f8f` (block 12207628) and
-`TradeChainCore`
-`0x87108ef9524d0125e283cab0140cc8e6278abfcd71c4456947fffb91e71d8399` (block 12207629) — the core's
-transaction also created the four companion contracts in its constructor.
+| Party | Address |
+|---|---|
+| Importer (applicant) | `0x42687043F24511CdE610190c24505E09b60f7706` |
+| Issuing bank | `0xfcF3333Fc5269b59E8ddf0dF9D87A7C41bEAbc45` |
+| Exporter (beneficiary) | `0x6e5c0C765e7C5011cd561efdb8272Ab567D4156F` |
+| Logistics | `0x8125b7BD0d9785E0DBb26C2FBa03dbe46F8C93C2` |
+| Verifier | `0xd836DE2d1b255100e4655680CE434Ed731Aef5A5` |
 
-A post-deployment smoke test (`scripts/smoke.js`) drove one complete sight credit against this
-deployment on-chain: application → bank issuance (25,000 tUSD escrowed) → shipment → custody (no
-payment at milestones) → presentation → examination/honor (paid) → delivery → `Settled` with the
-title released.
+A full multi-party demo (`scripts/demo-accounts.js`) ran against this deployment with every
+transaction signed by its own party — application → bank issuance (25,000 tUSD escrowed) →
+shipment → attestation → custody → presentation → honor (paid) → **on-chain reimbursement of the
+bank by the importer** → delivery → `Settled`. The complete transaction record (Etherscan links,
+blocks, gas, on-chain checks) is committed at
+[`deployments/sepolia-demo-log.md`](./deployments/sepolia-demo-log.md), and the setup record
+(funding, role grants, mints, allowances) at
+[`deployments/sepolia-accounts-setup.md`](./deployments/sepolia-accounts-setup.md).
 
-> The 22 November 2026 deployment
-> ([archived record](./deployments/sepolia-2026-11-22.json)) predates this rework: its on-chain code
-> still implements the earlier importer-funded escrow with milestone payouts and is kept only as
-> historical evidence (superseding the 5 November 2026 suite,
-> [archived record](./deployments/sepolia-2026-11-05.json)).
+> Earlier deployments are archived for evidence: 22 November 2026
+> ([pre-rework](./deployments/sepolia-2026-11-22.json)) and the 25 November pre-reimbursement
+> suite ([archived record](./deployments/sepolia-2026-11-25-pre-reimburse.json)).
 
 | Contract | Address |
 |----------|---------|

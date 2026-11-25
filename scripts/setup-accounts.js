@@ -19,8 +19,10 @@ const { ethers, network } = require("hardhat");
 const ETH_TOPUP = ethers.parseEther("0.1"); // per account
 const ETH_MIN = ethers.parseEther("0.02"); // below this, top up
 const TUSD = 10n ** 6n;
-const MINT = { BANK: 1_000_000n * TUSD, IMPORTER: 10_000n * TUSD, EXPORTER: 10_000n * TUSD };
-const MINT_MIN = { BANK: 100_000n * TUSD, IMPORTER: 1_000n * TUSD, EXPORTER: 1_000n * TUSD };
+// The BANK funds the escrows; the IMPORTER must hold at least the credit amount to
+// reimburse the bank on-chain once the proceeds are released.
+const MINT = { BANK: 1_000_000n * TUSD, IMPORTER: 1_000_000n * TUSD, EXPORTER: 10_000n * TUSD };
+const MINT_MIN = { BANK: 100_000n * TUSD, IMPORTER: 100_000n * TUSD, EXPORTER: 1_000n * TUSD };
 
 const ROLE_KEYS = [
   ["IMPORTER_PRIVATE_KEY", "ROLE_IMPORTER", "applicant (L/C importer)"],

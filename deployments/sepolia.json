@@ -2,18 +2,18 @@
   "network": "sepolia",
   "chainId": 11155111,
   "deployer": "0xCE4b0826b1B5d4bEA67EED5212Ae0AA5ec6c8664",
-  "settlementToken": "0xFf50c22D889C1D19F791565853c1FB4Ba4387475",
+  "settlementToken": "0x2ecdfB141681C5330f015a2910AefC598209577A",
   "tokenMeta": {
     "name": "TradeChain USD",
     "symbol": "tUSD",
     "decimals": 6,
     "admin": "0xCE4b0826b1B5d4bEA67EED5212Ae0AA5ec6c8664"
   },
-  "core": "0xCcE6bd88756759B8A02318a61d37e15BB1781520",
-  "shipmentTracker": "0x377fe5827EEa210e8AF670E7D61196F75f371feF",
-  "documentRegistry": "0x6115942cc4573eC2690EEC4546166a8714595FC8",
-  "complianceEngine": "0x343DFC53883256DB9441387CCfC5aa4BFe0d164e",
-  "letterOfCredit": "0xCC67ec9baed27A00f0f1DD7AaBEa194fcbeb8abd",
+  "core": "0x34A657C2b68CCda1b696f03dEf8c0a7a8A8728a6",
+  "shipmentTracker": "0xEcA841E1f8aF5C89C823f4A081498A45c9b11818",
+  "documentRegistry": "0xb9ca182d1e767704c7852Fe901632a530A1Ca897",
+  "complianceEngine": "0xB194FB6344Ed009a4BaCA25626E8882121BC5470",
+  "letterOfCredit": "0xFaA7C6C17fE1043b9f354d9Bd3bA55e25199919C",
   "roles": {
     "ROLE_EXPORTER": "0xCE4b0826b1B5d4bEA67EED5212Ae0AA5ec6c8664",
     "ROLE_IMPORTER": "0xCE4b0826b1B5d4bEA67EED5212Ae0AA5ec6c8664",
@@ -21,5 +21,5 @@
     "ROLE_LOGISTICS": "0xCE4b0826b1B5d4bEA67EED5212Ae0AA5ec6c8664",
     "ROLE_VERIFIER": "0xCE4b0826b1B5d4bEA67EED5212Ae0AA5ec6c8664"
   },
-  "deployedAt": "2026-11-25T05:53:50.144Z"
+  "deployedAt": "2026-11-25T17:43:50.231Z"
 }
