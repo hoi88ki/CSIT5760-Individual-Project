@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>TradeChain · Flow Console</title>
+<title>TradeChain — Trade Console</title>
 <style>
   :root {
     --bg: #0e1116; --panel: #161b23; --panel2: #1c232e; --line: #2a3340;
@@ -11,292 +11,324 @@
     --warn: #ffb454; --bad: #ff6b6b; --chip: #232c39;
   }
   * { box-sizing: border-box; }
-  body {
-    margin: 0; background: var(--bg); color: var(--text);
-    font: 14px/1.5 "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
   a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
   header {
-    padding: 14px 20px; border-bottom: 1px solid var(--line);
-    display: flex; flex-wrap: wrap; gap: 12px; align-items: center; background: var(--panel);
-    position: sticky; top: 0; z-index: 5;
+    padding: 12px 20px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap;
+    gap: 10px; align-items: center; background: var(--panel); position: sticky; top: 0; z-index: 20;
   }
-  header h1 { font-size: 18px; margin: 0; }
+  header h1 { font-size: 17px; margin: 0 6px 0 0; letter-spacing: .01em; }
   header h1 span { color: var(--accent); }
   header .spacer { flex: 1; }
-  .badge { padding: 3px 10px; border-radius: 999px; background: var(--chip); color: var(--muted); font-size: 12px; }
+  .badge { padding: 3px 10px; border-radius: 999px; background: var(--chip); color: var(--muted); font-size: 12px; white-space: nowrap; }
   .badge.ok { color: var(--ok); } .badge.warn { color: var(--warn); } .badge.bad { color: var(--bad); }
-  header .wallet-select { width: auto; min-width: 190px; max-width: 270px; padding: 6px 9px; }
-  header .wallet-select:disabled { opacity: .7; }
-  main { padding: 18px; display: grid; gap: 16px; max-width: 1280px; margin: 0 auto; }
-  section {
-    background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px;
-  }
-  section h2 { font-size: 14px; margin: 0 0 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
-  section h3 { font-size: 13px; margin: 14px 0 6px; color: var(--accent); }
-  label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px; }
+  header select { width: auto; min-width: 200px; max-width: 300px; }
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 16px; display: grid; gap: 14px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+  .field { display: flex; flex-direction: column; gap: 3px; min-width: 130px; }
+  .field.grow { flex: 1 1 320px; }
+  .field label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
   input, select {
     width: 100%; padding: 7px 9px; background: var(--panel2); color: var(--text);
     border: 1px solid var(--line); border-radius: 7px; font-size: 13px;
   }
-  input[type="file"] { padding: 5px; }
+  input[type="file"] { padding: 4px; font-size: 12px; }
+  input::placeholder { color: #5d6a7c; }
   button {
-    margin: 8px 6px 0 0; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line);
-    background: #223; color: var(--text); cursor: pointer; font-size: 13px;
+    padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line);
+    background: #223; color: var(--text); cursor: pointer; font-size: 13px; white-space: nowrap;
   }
-  button:hover { border-color: var(--accent); }
+  button:hover:not(:disabled) { border-color: var(--accent); }
   button.primary { background: var(--accent); border-color: var(--accent); color: #06121f; font-weight: 600; }
   button:disabled { opacity: .45; cursor: not-allowed; }
-  .row { display: flex; gap: 10px; flex-wrap: wrap; }
-  .row > div { flex: 1 1 150px; }
-  pre {
-    background: #0b0f14; border: 1px solid var(--line); border-radius: 8px; padding: 10px;
-    overflow: auto; max-height: 260px; font-size: 12px; white-space: pre-wrap; word-break: break-word;
-  }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { text-align: left; padding: 5px 7px; border-bottom: 1px solid var(--line); }
-  th { color: var(--muted); font-weight: 600; }
-  .steps { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
-  .step {
-    padding: 5px 11px; border-radius: 999px; background: var(--chip); color: var(--muted); font-size: 12px;
-    border: 1px solid var(--line);
-  }
+  button.small { padding: 5px 9px; font-size: 12px; }
+  .inline { display: flex; gap: 6px; align-items: center; }
+  .inline > input { flex: 1; }
+  .tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--line); }
+  .tabs button { background: none; border: 1px solid transparent; border-bottom: none; border-radius: 8px 8px 0 0; color: var(--muted); padding: 9px 16px; }
+  .tabs button.on { background: var(--panel); border-color: var(--line); color: var(--text); border-bottom: 1px solid var(--panel); margin-bottom: -1px; font-weight: 600; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .card > h3 { font-size: 13px; margin: 0 0 10px; color: var(--accent); font-weight: 600; }
+  .card > h3 .hint { color: var(--muted); font-weight: 400; }
+  h2 { font-size: 12px; margin: 6px 0 0; color: var(--muted); text-transform: uppercase; letter-spacing: .09em; }
+  .cards3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+  .grid4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+  .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+  .kv { display: grid; grid-template-columns: 1fr; gap: 4px; font-size: 13px; }
+  .kv > div { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px dashed #222b36; padding-bottom: 3px; }
+  .kv b { color: var(--muted); font-weight: 500; }
+  .kv span { text-align: right; word-break: break-word; }
+  .tradebar { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+  .tradebar .field { width: 130px; }
+  .steps { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .step { padding: 5px 11px; border-radius: 999px; background: var(--chip); color: var(--muted); font-size: 12px; border: 1px solid var(--line); }
   .step.done { background: #12331f; color: var(--ok); border-color: #1f5c39; }
   .step.now { background: #0d2a44; color: var(--accent); border-color: var(--accent); font-weight: 600; }
   .step.dead { background: #3a1d1d; color: var(--bad); border-color: #6b2b2b; }
-  .guide li { margin: 3px 0; }
-  .guide .who { color: var(--accent); font-weight: 600; }
-  .guide li.done { color: var(--muted); text-decoration: line-through; }
-  .guide li.next { color: var(--text); }
-  .guide li.next::before { content: "▶ "; color: var(--ok); }
-  .kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 6px 14px; font-size: 13px; }
-  .kv b { color: var(--muted); font-weight: 500; }
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  .overview-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 22px; margin-top: 12px; }
-  .guide { padding-left: 22px; margin: 8px 0; }
-  .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
-  .hint { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
-  .pill { display: inline-block; padding: 1px 8px; margin-left: 6px; border-radius: 999px; background: var(--chip); font-size: 11px; color: var(--muted); }
+  .arrow { color: #3d4a5c; }
+  .banner { border-radius: 10px; padding: 10px 14px; font-size: 13px; border: 1px solid var(--line); background: var(--panel2); }
+  .banner.ok { border-color: #1f5c39; color: var(--ok); }
+  .banner.warn { border-color: #6b5322; color: var(--warn); }
+  .banner.bad { border-color: #6b2b2b; color: var(--bad); }
+  .list { display: grid; gap: 8px; }
+  .step-row { display: grid; grid-template-columns: 30px 1fr; gap: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
+  .step-row.done { border-color: #1e4632; }
+  .step-row.next { border-color: var(--accent); box-shadow: 0 0 0 1px #1d3d5f inset; }
+  .step-row.off { opacity: .55; }
+  .step-no { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--chip); color: var(--muted); font-size: 12px; font-weight: 700; }
+  .step-row.done .step-no { background: #12331f; color: var(--ok); }
+  .step-row.next .step-no { background: var(--accent); color: #06121f; }
+  .step-title { font-weight: 600; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .actor { font-size: 11px; padding: 1px 8px; border-radius: 999px; background: var(--chip); color: var(--muted); font-weight: 500; }
+  .actor.mine { color: var(--ok); }
+  .step-detail { color: var(--muted); font-size: 12px; margin: 2px 0 0; }
+  .step-detail.bad { color: var(--bad); }
+  .step-controls { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .step-controls input { max-width: 320px; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--chip); font-size: 11px; color: var(--muted); }
+  .pill.ok { color: var(--ok); } .pill.bad { color: var(--bad); } .pill.warn { color: var(--warn); }
+  .hint { font-size: 12px; color: var(--muted); }
   .mono { font-family: Consolas, "Courier New", monospace; font-size: 12px; }
-  @media (max-width: 760px) {
-    .overview-columns { grid-template-columns: 1fr; }
-    header .wallet-select { min-width: 150px; max-width: 100%; }
-  }
+  .tablewrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  tr.clickable { cursor: pointer; }
+  tr.clickable:hover td { background: #1a2129; }
+  details.adv { font-size: 12px; color: var(--muted); }
+  details.adv input { margin-top: 5px; }
+  pre.log { background: #0b0f14; border: 1px solid var(--line); border-radius: 8px; padding: 10px; overflow: auto; max-height: 520px; font-size: 12px; white-space: pre-wrap; word-break: break-word; margin: 0; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+  .sep { height: 1px; background: var(--line); margin: 12px 0; }
+  @media (max-width: 760px) { header select { min-width: 140px; max-width: 100%; } .field.grow { flex: 1 1 100%; } }
 </style>
 </head>
 <body>
 <header>
-  <h1>Trade<span>Chain</span> · Flow Console</h1>
+  <h1>Trade<span>Chain</span></h1>
   <span id="net" class="badge">not connected</span>
-  <span id="acct" class="badge">—</span>
-  <select id="accountSelect" class="wallet-select" aria-label="Active MetaMask account" title="Choose which authorized MetaMask account signs transactions" disabled>
+  <span id="rolesBadge" class="badge">no account</span>
+  <span id="balBadge" class="badge">— tUSD</span>
+  <span class="spacer"></span>
+  <select id="accountSelect" title="Authorized wallet accounts" disabled>
     <option value="">Connect wallet to list accounts</option>
   </select>
-  <span id="roles" class="badge">no roles loaded</span>
-  <span class="spacer"></span>
   <button id="btnConnect" class="primary">Connect wallet</button>
 </header>
 
-<main>
-  <!-- 0. connection ------------------------------------------------------- -->
-  <section>
-    <h2>0 · Connection &amp; deployment</h2>
-    <div class="row">
-      <div><label>TradeChainCore address</label><input id="core" placeholder="0x…" /></div>
-      <div style="max-width:220px"><label>RPC URL (read-only)</label><input id="rpc" value="http://127.0.0.1:8545" /></div>
-      <div style="max-width:200px"><label>Preset</label>
-        <select id="preset">
-          <option value="sepolia">Sepolia (deployed)</option>
-          <option value="localhost">Local Hardhat node</option>
-        </select>
-      </div>
+<div class="wrap">
+  <section class="bar">
+    <div class="field grow">
+      <label>TradeChainCore address</label>
+      <input id="core" class="mono" placeholder="0x…" />
     </div>
-    <label>Test-only signer private key (local node demos; kept in memory, never saved)</label>
-    <input id="pk" class="mono" placeholder="0x… (optional — used only when no wallet is connected)" />
-    <button id="btnLoad">Load core</button>
-    <button id="btnApprove">Approve TradeUSD (max)</button>
-    <p class="hint">
-      Open this page over HTTP (not <code>file://</code>) so IPFS calls are not blocked by CORS. After connecting,
-      choose the active signer in the account menu in the header; only accounts authorized for this site are listed.
-      Use MetaMask's connected-site account settings to authorize additional accounts. Contract reads work without a wallet.
-    </p>
+    <div class="field">
+      <label>Network</label>
+      <select id="preset">
+        <option value="sepolia">Sepolia (deployed)</option>
+        <option value="localhost">Local Hardhat</option>
+        <option value="custom">Custom</option>
+      </select>
+    </div>
+    <div class="field grow">
+      <label>RPC endpoint</label>
+      <input id="rpc" class="mono" />
+    </div>
+    <div class="field"><label>&nbsp;</label><button id="btnLoad" class="primary">Load core</button></div>
+    <div class="field"><label>&nbsp;</label><button id="btnApprove">Approve tUSD</button></div>
+    <details class="adv">
+      <summary>Local test signer</summary>
+      <input id="pk" class="mono" placeholder="0x… test key, local node only" />
+    </details>
   </section>
 
-  <!-- 1. shipment overview: lifecycle, viewer and complete role-by-role flow -->
-  <section id="shipmentOverview">
-    <h2>1 · Shipment overview — lifecycle, viewer &amp; full flow</h2>
-    <div class="row">
-      <div style="max-width:230px"><label>Shipment id</label><input id="shipId" value="1" /></div>
-      <div style="max-width:230px"><label>Incoterm (if not-yet-created shipment)</label>
-        <select id="term"><option>EXW</option><option>FOB</option><option>CIF</option><option>DDP</option></select>
-      </div>
-      <div style="max-width:130px;align-self:flex-end"><button id="btnRefresh" class="primary">Refresh shipment</button></div>
-      <div style="flex:1;align-self:flex-end"><span class="hint">The viewer, lifecycle and flow guide below all update for this shipment id.</span></div>
-    </div>
-    <h3>Credit &amp; custody lifecycle</h3>
-    <div id="stepper" class="steps"></div>
-    <div class="kv" id="flowMeta"></div>
-    <div class="kv" id="shipmentView"></div>
-    <p class="hint">
-      The issuing bank honors a complying presentation — <b>sight</b> pays on examination,
-      <b>deferred</b> pays at maturity — not at an Incoterm milestone. Risk still follows the
-      Incoterm: <b>EXW</b> at pickup · <b>FOB/CIF</b> on vessel loading · <b>DDP</b> at final
-      delivery. The title NFT is released separately at final delivery.
-    </p>
-    <div class="overview-columns">
-      <div>
-        <h3>Linked application (order)</h3><div class="kv" id="orderView">—</div>
-        <h3>Letter of credit &amp; duty</h3><div class="kv" id="lcView">—</div>
-        <h3>Document of title (e-B/L NFT)</h3><div class="kv" id="nftView">—</div>
-      </div>
-      <div>
-        <h3>Whole trade flow · responsible role and progress</h3>
-        <ol class="guide" id="guide"></ol>
-        <p class="hint">Completed steps are checked from on-chain state. The highlighted next step shows the normal path; the deferred-maturity draw, bank force-finalization and expired-credit reclaim are alternatives.</p>
-      </div>
-    </div>
-  </section>
+  <nav class="tabs">
+    <button data-tab="flow" class="on">Flow</button>
+    <button data-tab="docs">Documents</button>
+    <button data-tab="admin">Admin / setup</button>
+    <button data-tab="log">Activity</button>
+  </nav>
 
-  <!-- 4. documents -------------------------------------------------------- -->
-  <section>
-    <h2>2 · Documents (IPFS CIDs anchored per role)</h2>
-    <div class="grid2">
-      <div>
-        <table id="docTable">
-          <thead><tr><th>DocType</th><th>Anchored by</th><th>Valid</th><th>Issuer</th><th>CID</th></tr></thead>
-          <tbody></tbody>
-        </table>
-        <p class="hint">★ marks the credit's <b>stipulated presentation set</b> for this Incoterm — what the bank examines before honoring. Revoked or missing documents block the presentation and the payout.</p>
+  <main>
+    <!-- ------------------------------------------------------------- FLOW -->
+    <section id="tab-flow">
+      <div class="tradebar">
+        <button id="btnPrev" title="Previous trade">&#9664;</button>
+        <div class="field"><label>Trade / order id</label><input id="tradeId" value="1" /></div>
+        <button id="btnNext" title="Next trade">&#9654;</button>
+        <button id="btnRefresh" class="primary">Refresh</button>
+        <span id="counts" class="badge">—</span>
+        <span id="explorer" class="hint"></span>
       </div>
-      <div>
-        <label>DocType to anchor</label>
-        <select id="docType"></select>
-        <label>Document CID</label><input id="docCid" placeholder="bafy…" />
-        <label>Optional: upload a file to a kubo node to fill the CID</label>
-        <div class="row">
-          <div><input id="ipfsNode" value="http://127.0.0.1:5001" /></div>
-          <div style="max-width:230px"><input id="ipfsFile" type="file" /></div>
-        </div>
-        <button id="btnAnchor">Anchor document</button>
-        <button id="btnRevoke">Revoke document</button>
-        <button id="btnViewDoc">Open document by CID</button>
-        <p class="hint">Anchoring is role-gated: invoice/packing at shipment creation, Certificate of Origin by the
-        exporter, inspection / insurance / clearance by the verifier, B/L by logistics at loading.</p>
-      </div>
-    </div>
-  </section>
 
-  <div class="grid3">
-    <!-- 5. order & L/C ----------------------------------------------------- -->
-    <section>
-      <h2>3 · Apply for credit → bank issues → ship</h2>
-      <label>Beneficiary (exporter) address</label><input id="exporter" placeholder="0x…" />
-      <div class="row">
-        <div><label>Incoterm</label>
-          <select id="newTerm"><option value="0">EXW</option><option value="1">FOB</option><option value="2">CIF</option><option value="3">DDP</option></select>
+      <div class="cards3" style="margin-top:14px">
+        <div class="card"><h3>Trade</h3><div id="tradeFacts" class="kv">—</div></div>
+        <div class="card"><h3>Documentary credit</h3><div id="lcFacts" class="kv">—</div></div>
+        <div class="card"><h3>Document of title (e-B/L)</h3><div id="nftFacts" class="kv">—</div></div>
+      </div>
+
+      <div id="stepper" class="steps" style="margin:14px 0 10px"></div>
+      <div id="banner" class="banner">Load a core address to begin.</div>
+
+      <section class="card" style="margin-top:14px">
+        <h3>Apply for a credit <span class="hint">— importer opens the trade</span></h3>
+        <div class="grid4">
+          <div class="field" style="grid-column: span 2"><label>Beneficiary (exporter)</label><input id="fExporter" class="mono" placeholder="0x…" /></div>
+          <div class="field"><label>Incoterm</label>
+            <select id="fTerm"><option value="0">EXW</option><option value="1" selected>FOB</option><option value="2">CIF</option><option value="3">DDP</option></select>
+          </div>
+          <div class="field"><label>Payment term</label>
+            <select id="fPay"><option value="0">Sight</option><option value="1">Deferred</option></select>
+          </div>
+          <div class="field"><label>L/C amount (tUSD)</label><input id="fAmount" value="25000" /></div>
+          <div class="field"><label>Deferral (days)</label><input id="fDefer" value="3" /></div>
+          <div class="field"><label>Credit validity (days)</label><input id="fDays" value="30" /></div>
         </div>
-        <div><label>L/C amount (tUSD)</label><input id="lcAmount" value="100000" /></div>
-      </div>
-      <div class="row">
-        <div><label>Payment term</label>
-          <select id="newPaymentTerm"><option value="0">Sight</option><option value="1">Deferred</option></select>
+        <div class="row" style="margin-top:10px">
+          <button id="btnOrder" class="primary">Importer &#8594; createOrder</button>
+          <span class="hint">The invoice and packing-list CIDs are supplied by the exporter when shipping (step 3); IPFS upload lives in the Documents tab.</span>
         </div>
-        <div><label>Deferral (days, Deferred only)</label><input id="deferredDays" value="3" /></div>
-      </div>
-      <div class="row">
-        <div><label>Deadline (days)</label><input id="days" value="30" /></div>
-        <div><label>Order id</label><input id="shipOrderId" value="1" /></div>
-      </div>
-      <label>Invoice CID</label><input id="invCid" placeholder="bafy…" />
-      <label>Packing-list CID</label><input id="packCid" placeholder="bafy…" />
-      <button id="btnOrder">Importer → createOrder (apply for L/C)</button>
-      <button id="btnIssue">Bank → issueLetterOfCredit (funds the escrow)</button>
-      <button id="btnShipment">Exporter → createShipment</button>
-      <p class="hint">The bank — not the importer — funds the escrow: it needs a TradeUSD allowance for the core
-      (use <b>Approve TradeUSD (max)</b> above while connected as the bank). The named exporter can ship only
-      after the credit is issued and operative.</p>
+      </section>
+
+      <h2 style="margin-top:16px">Workflow</h2>
+      <div id="steps" class="list" style="margin-top:8px"></div>
+
+      <details class="card" style="margin-top:14px">
+        <summary style="cursor:pointer;color:var(--muted);font-size:13px">Trades on this deployment</summary>
+        <div id="trades" class="tablewrap" style="margin-top:10px">—</div>
+      </details>
     </section>
 
-    <!-- 6. presentation, honor & milestones -------------------------------- -->
-    <section>
-      <h2>4 · Presentation, examination &amp; custody</h2>
-      <button id="btnPresent">Exporter → presentDocuments</button>
-      <button id="btnHonor">Bank → honorPresentation (examines &amp; honors)</button>
-      <button id="btnDraw">Anyone → drawDeferredPayment (after maturity)</button>
-      <label>B/L or AWB CID (anchored by logistics at loading)</label><input id="blCid" placeholder="bafy…" />
-      <button id="btnPickup">Logistics → confirmPickup</button>
-      <button id="btnLoad2">Logistics → confirmVesselLoading</button>
-      <div class="row">
-        <div><label>Duty (tUSD, 0 allowed)</label><input id="duty" value="0" /></div>
-        <div style="max-width:150px;align-self:flex-end"><button id="btnDuty">payCustomsDuty</button></div>
-      </div>
-      <button id="btnDeliver">Importer → confirmFinalDelivery</button>
-      <button id="btnReimburse">Importer → reimburseIssuingBank (after honor)</button>
-      <button id="btnForce">Bank → forceFinalizeDelivery</button>
-      <button id="btnReclaim">Importer/Bank/Admin → reclaimExpiredLC (unused credit → bank)</button>
-      <p class="hint">Present only after the stipulated document set (★ below) is anchored and the goods are
-      loaded — the B/L is part of every presentation. The bank re-examines on-chain validity before honoring:
-      sight pays immediately; deferred schedules payment at <code>honoredAt + deferral</code>.</p>
+    <!-- --------------------------------------------------------- DOCUMENTS -->
+    <section id="tab-docs" hidden>
+      <section class="card">
+        <h3>Off-chain documents <span class="hint">— one kubo node per role</span></h3>
+        <div class="grid3">
+          <div class="field"><label>kubo API of the active role's node</label><input id="ipfsNode" class="mono" value="http://127.0.0.1:5001" /></div>
+          <div class="field"><label>Upload a file to that node</label><input id="ipfsFile" type="file" /></div>
+          <div class="field"><label>Open an anchored CID from that node</label>
+            <div class="inline"><input id="viewCid" class="mono" placeholder="bafy…" /><button id="btnOpenCid">Open</button></div>
+          </div>
+        </div>
+        <div id="uploadOut" class="hint" style="margin-top:8px">Upload fills the CID field of the row that asked for it; Open renders the bytes behind a CID.</div>
+      </section>
+
+      <section class="card" style="margin-top:14px">
+        <h3>Anchored documents <span id="docTrade" class="badge"></span> <span id="docExam" class="badge"></span></h3>
+        <div class="tablewrap">
+          <table id="docTable">
+            <thead><tr><th>DocType</th><th>Anchor role</th><th>Status</th><th>Issuer</th><th>Anchored</th><th>CID</th><th>Actions</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="hint" style="margin-top:8px">★ = stipulated by the credit for this Incoterm — the bank examines this set before honoring. Anchors are one-shot: a CID cannot be replaced, only revoked. Invoice and packing list anchor at shipment; the B/L anchors at vessel loading.</p>
+      </section>
     </section>
 
-    <!-- 7. admin ----------------------------------------------------------- -->
-    <section>
-      <h2>5 · Admin &amp; registry</h2>
-      <label>Grant roles (checked against the connected account)</label>
-      <div id="roleBoxes" class="row"></div>
-      <div class="row">
-        <div><label>Grantee address</label><input id="grantee" placeholder="0x…" /></div>
-        <div style="max-width:140px;align-self:flex-end"><button id="btnGrant">grantRoles</button></div>
-      </div>
-      <label>Mint demo tUSD to (admin)</label>
-      <div class="row">
-        <div><input id="mintTo" placeholder="0x…" /></div>
-        <div style="max-width:130px"><input id="mintAmt" value="1000000" /></div>
-        <div style="max-width:120px;align-self:flex-end"><button id="btnMint">mint</button></div>
-      </div>
-      <label>Replace the active DocumentRegistry (admin or ROLE_REGISTRY_ADMIN)</label>
-      <div class="row">
-        <div><input id="newRegistry" placeholder="new DocumentRegistry address (0x…)" /></div>
-        <div style="max-width:150px;align-self:flex-end"><button id="btnSwap">setDocumentRegistry</button></div>
-      </div>
-      <div class="kv" id="regView" style="margin-top:8px">—</div>
-      <p class="hint">A replacement must be a DocumentRegistry bound to this core with matching runtime code
-      (guards against a look-alike faking document validity).</p>
-    </section>
-  </div>
+    <!-- ------------------------------------------------------------- ADMIN -->
+    <section id="tab-admin" hidden>
+      <div class="cards3">
+        <section class="card">
+          <h3>Deployment</h3>
+          <div id="adminInfo" class="kv">—</div>
+        </section>
 
-  <!-- 8. log -------------------------------------------------------------- -->
-  <section>
-    <h2>6 · Activity log</h2>
-    <pre id="log">Ready.</pre>
-  </section>
-</main>
+        <section class="card">
+          <h3>Roles on the active account</h3>
+          <div id="roleTable" class="kv">—</div>
+          <div class="sep"></div>
+          <label class="hint">Grant roles to an address (admin only)</label>
+          <div id="roleBoxes" class="row" style="margin:6px 0"></div>
+          <div class="inline"><input id="grantee" class="mono" placeholder="0x… grantee" /><button id="btnGrant">grantRoles</button></div>
+        </section>
+
+        <section class="card">
+          <h3>Issue demo tUSD</h3>
+          <div class="grid3">
+            <div class="field"><label>To</label><input id="mintTo" class="mono" placeholder="0x… (default: active account)" /></div>
+            <div class="field"><label>Amount (tUSD)</label><input id="mintAmt" value="1000000" /></div>
+            <div class="field"><label>&nbsp;</label><button id="btnMint">mint</button></div>
+          </div>
+          <div class="sep"></div>
+          <h3>Customs treasury</h3>
+          <div class="inline"><input id="treasuryAddr" class="mono" placeholder="0x… treasury" /><button id="btnTreasury">setTreasury</button></div>
+        </section>
+
+        <section class="card">
+          <h3>Module role <span class="hint">— setModuleRole</span></h3>
+          <div class="grid3">
+            <div class="field"><label>Module</label><select id="modModule">
+              <option value="registry">DocumentRegistry</option>
+              <option value="credit">LetterOfCredit</option>
+              <option value="compliance">ComplianceEngine</option>
+            </select></div>
+            <div class="field"><label>Role</label><select id="modRole">
+              <option value="controller">CONTROLLER_ROLE</option>
+              <option value="admin">DEFAULT_ADMIN_ROLE</option>
+              <option value="bank">ROLE_BANK</option>
+              <option value="custom">custom (bytes32 hex)</option>
+            </select></div>
+            <div class="field"><label>Account</label><input id="modAccount" class="mono" placeholder="0x…" /></div>
+          </div>
+          <div class="inline" style="margin-top:8px">
+            <input id="modCustom" class="mono" placeholder="0x… 32-byte role (custom only)" />
+            <button id="btnModGrant">grant</button>
+            <button id="btnModRevoke">revoke</button>
+          </div>
+        </section>
+
+        <section class="card">
+          <h3>Swap the DocumentRegistry</h3>
+          <div class="inline"><input id="newRegistry" class="mono" placeholder="new DocumentRegistry address" /><button id="btnSwap">setDocumentRegistry</button></div>
+          <p class="hint" style="margin-top:8px">The replacement must be bound to this core and match the deployment-time runtime code; anchored documents keep resolving to the registry that holds them.</p>
+        </section>
+
+        <section class="card">
+          <h3>Local chain clock</h3>
+          <div class="inline"><input id="advDays" value="3" style="max-width:100px" /><button id="btnAdvance">Advance days</button></div>
+          <p class="hint" style="margin-top:8px">Local Hardhat only: shifts block time so deferred maturity and credit expiry can be exercised.</p>
+        </section>
+      </div>
+    </section>
+
+    <!-- --------------------------------------------------------------- LOG -->
+    <section id="tab-log" hidden>
+      <section class="card">
+        <h3>Activity</h3>
+        <div class="row" style="margin-bottom:8px"><button id="btnClearLog" class="small">Clear</button></div>
+        <pre id="log" class="log">Ready.</pre>
+      </section>
+    </section>
+  </main>
+</div>
 
 <script src="./ethers.umd.min.js"></script>
 <script>
-/* ------------------------------------------------------------------ consts */
+/* ============================================================ constants */
 const INCOTERMS = ["EXW", "FOB", "CIF", "DDP"];
 const PAYMENT_TERMS = ["Sight", "Deferred"];
-const PHASES = ["OrderPlaced", "LCIssued", "Shipped", "Presented", "Honored", "Delivered", "Settled", "Reclaimed"];
-const CUSTODY = ["AtExporter", "PickedUp", "OnVessel", "Delivered"];
-const DOCTYPES = ["CommercialInvoice", "PackingList", "CertificateOfOrigin", "InspectionCertificate",
-                  "InsuranceCertificate", "BillOfLadingOrAWB", "CustomsClearance"];
+const PHASES = ["Order placed", "L/C issued", "Shipped", "Presented", "Honored", "Delivered", "Settled", "Reclaimed"];
+const CUSTODY = ["At exporter", "Picked up", "On vessel", "Delivered"];
+const DOCTYPES = ["Commercial invoice", "Packing list", "Certificate of origin", "Inspection certificate",
+                  "Insurance certificate", "Bill of lading / AWB", "Customs clearance"];
 const DOC_ROLE = ["Exporter", "Exporter", "Exporter", "Verifier", "Verifier", "Logistics", "Verifier"];
+const ANCHORABLE = [2, 3, 4, 6];
 const UNIT = 10n ** 6n;
-
-const SEPOLIA = {
-  core: "0x34A657C2b68CCda1b696f03dEf8c0a7a8A8728a6",
-  rpc: "https://ethereum-sepolia-rpc.publicnode.com",
-  explorer: "https://sepolia.etherscan.io",
-};
+const RISK_AT = ["pickup", "vessel loading", "vessel loading", "final delivery"];
+const SEPOLIA = { core: "0x34A657C2b68CCda1b696f03dEf8c0a7a8A8728a6", rpc: "https://ethereum-sepolia-rpc.publicnode.com", id: 11155111n };
+const LOCAL_RPC = "http://127.0.0.1:8545";
 
 const CORE_ABI = [
-  "function ROLE_EXPORTER() view returns (bytes32)","function ROLE_IMPORTER() view returns (bytes32)",
-  "function ROLE_BANK() view returns (bytes32)","function ROLE_LOGISTICS() view returns (bytes32)",
-  "function ROLE_VERIFIER() view returns (bytes32)","function ROLE_REGISTRY_ADMIN() view returns (bytes32)",
+  "function ROLE_EXPORTER() view returns (bytes32)", "function ROLE_IMPORTER() view returns (bytes32)",
+  "function ROLE_BANK() view returns (bytes32)", "function ROLE_LOGISTICS() view returns (bytes32)",
+  "function ROLE_VERIFIER() view returns (bytes32)", "function ROLE_REGISTRY_ADMIN() view returns (bytes32)",
+  "function DEFAULT_ADMIN_ROLE() view returns (bytes32)",
+  "function hasRole(bytes32 role, address account) view returns (bool)",
   "function grantRoles(bytes32[] roles, address[] accounts)",
-  "function setDocumentRegistry(address newRegistry)",
   "function setModuleRole(address module, bytes32 role, address account, bool granted)",
+  "function setDocumentRegistry(address newRegistry)",
+  "function setTreasury(address treasury_)",
   "function mint(address to, uint256 amount)",
   "function createOrder(address exporter, uint8 term, uint256 lcAmount, uint64 deadline, uint8 paymentTerm, uint64 deferredDays) returns (uint256)",
   "function issueLetterOfCredit(uint256 orderId)",
@@ -305,399 +337,618 @@ const CORE_ABI = [
   "function honorPresentation(uint256 id)",
   "function drawDeferredPayment(uint256 id)",
   "function anchorDocument(uint256 id, uint8 docType, string cid)",
-  "function payCustomsDuty(uint256 id, uint256 amount)","function confirmPickup(uint256 id)",
-  "function confirmVesselLoading(uint256 id, string blCid)","function confirmFinalDelivery(uint256 id)",
-  "function forceFinalizeDelivery(uint256 id)","function reclaimExpiredLC(uint256 orderId)",
-  "function reimburseIssuingBank(uint256 orderId)",
   "function revokeDocument(uint256 id, uint8 docType)",
-  "function settlementToken() view returns (address)","function shipmentTracker() view returns (address)",
-  "function documentRegistry() view returns (address)","function complianceEngine() view returns (address)",
-  "function letterOfCredit() view returns (address)","function orderCount() view returns (uint256)",
+  "function payCustomsDuty(uint256 id, uint256 amount)",
+  "function confirmPickup(uint256 id)",
+  "function confirmVesselLoading(uint256 id, string blCid)",
+  "function confirmFinalDelivery(uint256 id)",
+  "function forceFinalizeDelivery(uint256 id)",
+  "function reclaimExpiredLC(uint256 orderId)",
+  "function reimburseIssuingBank(uint256 orderId)",
+  "function settlementToken() view returns (address)",
+  "function shipmentTracker() view returns (address)",
+  "function documentRegistry() view returns (address)",
+  "function complianceEngine() view returns (address)",
+  "function letterOfCredit() view returns (address)",
+  "function orderCount() view returns (uint256)",
   "function shipmentCount() view returns (uint256)",
-  "function hasValidDocument(uint256 id, uint8 docType) view returns (bool)",
   "function presentationDocuments(uint256 id) view returns (uint8)",
   "function examinePresentation(uint256 id) view returns (bool ok, uint8 missing)",
-  "function requiredDocumentsAt(uint256 id, uint8 custody) view returns (uint8)",
-  "function isCompliant(uint256 id, uint8 custody) view returns (bool)",
-  "function documentRegistryOf(uint256 id, uint8 docType) view returns (address)",
-  "function hasRole(bytes32 role, address account) view returns (bool)",
-  "function getOrder(uint256 orderId) view returns (tuple(uint256 id,address importer,address exporter,uint8 term,uint8 paymentTerm,uint64 deferredDays,uint64 deadline,uint256 lcAmount))",
   "function getShipment(uint256 id) view returns (tuple(uint256 id,uint256 orderId,address exporter,address importer,uint8 term,uint8 paymentTerm,uint64 deferredDays,uint8 phase,uint8 custody,uint64 createdAt,uint64 deadline,uint256 lcAmount,address riskHolder))",
   "function getLC(uint256 id) view returns (tuple(uint256 id,address issuingBank,address beneficiary,uint256 amount,uint8 term,uint64 deferredDays,uint64 issuedAt,uint8 requiredDocs,bool issued,bool presented,uint64 presentedAt,bool honored,uint64 honoredAt,uint64 maturityAt,bool paid,bool reclaimed,bool reimbursed,uint64 reimbursedAt,uint256 dutyAmount,bool dutyPaid,address dutyPayer))",
-];
-const TRACKER_ABI = [
-  "function name() view returns (string)","function ownerOf(uint256 tokenId) view returns (address)",
-  "function tokenURI(uint256 tokenId) view returns (string)","function exists(uint256 tokenId) view returns (bool)",
-];
-const REGISTRY_ABI = [
-  "function core() view returns (address)",
-  "function isValid(uint256 id, uint8 docType) view returns (bool)",
-  "function issuerOf(uint256 id, uint8 docType) view returns (address)",
   "function getDocument(uint256 id, uint8 docType) view returns (tuple(string cid,address issuer,uint64 timestamp,bool verified))",
-  "function DEFAULT_ADMIN_ROLE() view returns (bytes32)",
 ];
-const LOC_ABI = ["function treasury() view returns (address)","function escrowBalance() view returns (uint256)","function isPresented(uint256 id) view returns (bool)","function isHonored(uint256 id) view returns (bool)"];
-const TOKEN_ABI = ["function approve(address spender, uint256 amount) returns (bool)","function balanceOf(address) view returns (uint256)","function symbol() view returns (string)","function decimals() view returns (uint8)"];
+const COMPLIANCE_ABI = ["function presentationMask(uint8 term) pure returns (uint8)"];
+const CREDIT_ABI = ["function escrowBalance() view returns (uint256)", "function treasury() view returns (address)"];
+const TRACKER_ABI = ["function ownerOf(uint256 tokenId) view returns (address)", "function tokenURI(uint256 tokenId) view returns (string)", "function exists(uint256 tokenId) view returns (bool)"];
+const TOKEN_ABI = ["function approve(address spender, uint256 amount) returns (bool)", "function balanceOf(address) view returns (uint256)", "function symbol() view returns (string)"];
 
-/* ------------------------------------------------------------------ state */
-let provider = null, signer = null, account = "", chainId = 0n;
-let availableAccounts = [];
-let core, tracker, registry, loc, token;
-let roleIds = {}, myRoles = [];
-const registryCache = {};
+/* ================================================================ state */
+const S = {
+  provider: null, signer: null, account: "", chainId: 0n, accounts: [],
+  core: null, coreAddr: "", tracker: null, credit: null, compliance: null, token: null,
+  roleIds: {}, roles: {}, isAdmin: false, tokenSymbol: "tUSD",
+  // Step inputs survive a re-render, so a typed CID is not lost when an earlier
+  // queued transaction refreshes the page.
+  draft: { invCid: "", packCid: "", blCid: "", dutyAmt: "0" },
+  s: null, lc: null, docs: [], mask: 0, exam: { ok: false, missing: 0 }, orders: 0, shipments: 0,
+};
 const $ = (id) => document.getElementById(id);
-const short = (a) => (a || "").slice(0, 6) + "…" + (a || "").slice(-4);
-const fmt = (v) => ethers.formatUnits(v, 6);
-/** One DocumentRegistry handle per address (the active registry is swappable). */
-function registryAt(addr) {
-  if (!registryCache[addr]) registryCache[addr] = new ethers.Contract(addr, REGISTRY_ABI, signer || provider);
-  return registryCache[addr];
+const short = (a) => (!a ? "—" : a.slice(0, 6) + "…" + a.slice(-4));
+const fmt = (v) => Number(ethers.formatUnits(v, 6)).toLocaleString(undefined, { maximumFractionDigits: 2 });
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const ts = (v) => (Number(v) ? new Date(Number(v) * 1000).toLocaleString() : "—");
+const tradeId = () => BigInt(($("tradeId").value || "1").trim());
+const maskHas = (mask, i) => ((Number(mask) >> i) & 1) === 1;
+
+const logLines = [];
+function log(msg, bad) {
+  logLines.unshift({ text: `[${new Date().toLocaleTimeString()}] ${msg}`, bad: Boolean(bad) });
+  if (logLines.length > 200) logLines.length = 200;
+  $("log").innerHTML = logLines
+    .map((l) => `<span${l.bad ? ' style="color:var(--bad)"' : ""}>${esc(l.text)}</span>`)
+    .join("\n");
 }
 
-function log(msg, cls) {
-  const t = new Date().toLocaleTimeString();
-  $("log").textContent = `[${t}] ${msg}\n` + $("log").textContent;
-  if (cls) $("log").className = cls;
-}
-
-/* ------------------------------------------------------------- connection */
-function renderAccountOptions(accounts) {
-  const select = $("accountSelect");
-  select.innerHTML = "";
-  if (!accounts.length) {
-    select.add(new Option("Connect wallet to list accounts", ""));
-    select.disabled = true;
-    return;
-  }
-  accounts.forEach((address, index) => {
-    const option = new Option(`${index + 1}: ${address}`, address);
-    option.title = address;
-    select.add(option);
-  });
-  select.value = account;
-  select.disabled = false;
-  select.title = accounts.length > 1
-    ? "Choose which authorized MetaMask account signs transactions"
-    : "Only one MetaMask account is currently authorized for this site";
-}
-
-async function selectAccount(address) {
-  if (!window.ethereum || !availableAccounts.includes(address)) return;
+/* ============================================================ connection */
+function savePrefs() {
   try {
-    account = address;
-    provider = new ethers.BrowserProvider(window.ethereum);
-    signer = await provider.getSigner(address);
-    $("acct").textContent = short(address);
-    await loadCore();
-    log(`Active MetaMask account: ${address}`);
-  } catch (e) { log("account selection ✘ " + (e.shortMessage || e.message)); }
+    localStorage.setItem("tradechain.core", $("core").value.trim());
+    localStorage.setItem("tradechain.rpc", $("rpc").value.trim());
+    localStorage.setItem("tradechain.preset", $("preset").value);
+    localStorage.setItem("tradechain.trade", $("tradeId").value.trim());
+  } catch { /* storage unavailable */ }
 }
 
 async function connect(requestAccounts = true) {
   try {
+    let nextProvider;
     if (window.ethereum) {
-      provider = new ethers.BrowserProvider(window.ethereum);
-      const nextAccounts = await provider.send(requestAccounts ? "eth_requestAccounts" : "eth_accounts", []);
-      const previousSelection = account;
-      availableAccounts = nextAccounts;
-      account = nextAccounts.find((address) => address.toLowerCase() === previousSelection.toLowerCase()) || nextAccounts[0] || "";
-      signer = account ? await provider.getSigner(account) : null;
-      renderAccountOptions(availableAccounts);
-      if (!account && requestAccounts) throw new Error("No wallet account was authorized.");
-    } else if ($("pk").value.trim().startsWith("0x") && $("pk").value.trim().length > 10) {
-      provider = new ethers.JsonRpcProvider($("rpc").value);
-      signer = new ethers.Wallet($("pk").value.trim(), provider);
-      account = await signer.getAddress();
-      log("Using the in-page test signer (local node only).");
+      nextProvider = new ethers.BrowserProvider(window.ethereum);
+      const requested = await nextProvider.send(requestAccounts ? "eth_requestAccounts" : "eth_accounts", []);
+      const previous = S.account;
+      S.accounts = requested;
+      S.account = requested.find((a) => a.toLowerCase() === String(previous).toLowerCase()) || requested[0] || "";
+      S.signer = S.account ? await nextProvider.getSigner(S.account) : null;
+      renderAccounts();
+      if (!S.account && requestAccounts) throw new Error("No wallet account was authorized.");
     } else {
-      provider = new ethers.JsonRpcProvider($("rpc").value);
-      signer = null;
-      account = "";
-      if (requestAccounts) log("MetaMask is not available — connected read-only.");
+      const key = $("pk").value.trim();
+      if (key.startsWith("0x") && key.length > 10) {
+        nextProvider = new ethers.JsonRpcProvider($("rpc").value || LOCAL_RPC);
+        S.signer = new ethers.Wallet(key, nextProvider);
+        S.account = await S.signer.getAddress();
+        S.accounts = [S.account];
+        renderAccounts();
+        log("Using the in-page test signer (local node only).");
+      } else {
+        nextProvider = new ethers.JsonRpcProvider($("rpc").value || LOCAL_RPC);
+        S.signer = null;
+        S.account = "";
+        S.accounts = [];
+        renderAccounts();
+        if (requestAccounts) log("No wallet detected — running read-only.");
+      }
     }
-    if (!window.ethereum) {
-      availableAccounts = [];
-      renderAccountOptions(availableAccounts);
-    }
-    const net = await provider.getNetwork();
-    chainId = net.chainId;
-    $("net").textContent = `chain ${chainId}` + (chainId === 11155111n ? " (Sepolia)" : "");
-    $("net").className = "badge " + (chainId === 11155111n || chainId === 31337n ? "ok" : "warn");
-    $("acct").textContent = account ? short(account) : "read-only";
-    $("btnConnect").textContent = account ? "Reconnect wallet" : "Connect wallet";
+    S.provider = nextProvider;
+    const net = await S.provider.getNetwork();
+    S.chainId = net.chainId;
+    $("net").textContent = `chain ${S.chainId}` + (S.chainId === SEPOLIA.id ? " · Sepolia" : S.chainId === 31337n ? " · Hardhat" : "");
+    $("net").className = "badge " + (S.chainId === SEPOLIA.id || S.chainId === 31337n ? "ok" : "warn");
+    $("btnConnect").textContent = S.account ? "Reconnect wallet" : "Connect wallet";
     await loadCore();
-  } catch (e) { log("connect ✘ " + (e.shortMessage || e.message)); }
+  } catch (e) {
+    log("connect ✘ " + (e.shortMessage || e.message), "bad");
+  }
+}
+
+async function selectAccount(address) {
+  if (!window.ethereum || !S.accounts.includes(address)) return;
+  try {
+    S.account = address;
+    S.provider = new ethers.BrowserProvider(window.ethereum);
+    S.signer = await S.provider.getSigner(address);
+    await loadCore();
+    log("Active account: " + address);
+  } catch (e) {
+    log("account switch ✘ " + (e.shortMessage || e.message), "bad");
+  }
+}
+
+function renderAccounts() {
+  const sel = $("accountSelect");
+  sel.innerHTML = "";
+  if (!S.accounts.length) {
+    sel.add(new Option("Connect wallet to list accounts", ""));
+    sel.disabled = true;
+    return;
+  }
+  S.accounts.forEach((a, i) => sel.add(new Option(`${i + 1}: ${short(a)}`, a)));
+  sel.value = S.account;
+  sel.disabled = false;
 }
 
 async function loadCore() {
   const addr = $("core").value.trim();
-  if (!ethers.isAddress(addr)) return log("Enter a valid TradeChainCore address.");
+  if (!ethers.isAddress(addr)) return log("Enter a valid TradeChainCore address.", "bad");
+  savePrefs();
   try {
-    core = new ethers.Contract(addr, CORE_ABI, signer || provider);
-    const [t, r, c, l, tok] = await Promise.all([
-      core.shipmentTracker(), core.documentRegistry(), core.complianceEngine(),
-      core.letterOfCredit(), core.settlementToken(),
+    const reader = S.signer || S.provider;
+    if (!reader) throw new Error("no provider");
+    S.core = new ethers.Contract(addr, CORE_ABI, reader);
+    S.coreAddr = addr;
+    const code = await S.provider.getCode(addr);
+    if (code === "0x") log("⚠ No contract code at " + addr + " on chain " + S.chainId, "bad");
+    const [trackerAddr, complianceAddr, creditAddr, tokenAddr] = await Promise.all([
+      S.core.shipmentTracker(), S.core.complianceEngine(),
+      S.core.letterOfCredit(), S.core.settlementToken(),
     ]);
-    tracker = new ethers.Contract(t, TRACKER_ABI, signer || provider);
-    registry = registryAt(r);
-    loc = new ethers.Contract(l, LOC_ABI, signer || provider);
-    token = new ethers.Contract(tok, TOKEN_ABI, signer || provider);
-    for (const n of ["ROLE_EXPORTER","ROLE_IMPORTER","ROLE_BANK","ROLE_LOGISTICS","ROLE_VERIFIER","ROLE_REGISTRY_ADMIN"]) {
-      roleIds[n] = await core[n]();
+    S.tracker = new ethers.Contract(trackerAddr, TRACKER_ABI, reader);
+    S.compliance = new ethers.Contract(complianceAddr, COMPLIANCE_ABI, reader);
+    S.credit = new ethers.Contract(creditAddr, CREDIT_ABI, reader);
+    S.token = new ethers.Contract(tokenAddr, TOKEN_ABI, reader);
+    try { S.tokenSymbol = await S.token.symbol(); } catch { S.tokenSymbol = "tUSD"; }
+    for (const n of ["ROLE_EXPORTER", "ROLE_IMPORTER", "ROLE_BANK", "ROLE_LOGISTICS", "ROLE_VERIFIER", "ROLE_REGISTRY_ADMIN"]) {
+      S.roleIds[n] = await S.core[n]();
     }
+    S.roleIds.DEFAULT_ADMIN_ROLE = await S.core.DEFAULT_ADMIN_ROLE();
     await refreshRoles();
-    if (!$('shipId').value.trim()) $('shipId').value = "1";
     await refresh();
-    log("Loaded core " + addr);
-  } catch (e) { log("load ✘ " + (e.shortMessage || e.message)); }
+    log("Loaded TradeChainCore " + addr + " (chain " + S.chainId + ")");
+  } catch (e) {
+    log("load ✘ " + (e.shortMessage || e.message), "bad");
+  }
 }
 
 async function refreshRoles() {
-  if (!core || !account) { $("roles").textContent = "no roles loaded"; return; }
-  const held = [];
-  for (const n of Object.keys(roleIds)) if (await core.hasRole(roleIds[n], account)) held.push(n.replace("ROLE_", ""));
-  myRoles = held;
-  $("roles").textContent = held.length ? "roles: " + held.join(", ") : "no roles on this account";
-  $("roles").className = "badge " + (held.length ? "ok" : "warn");
-  renderRoleBoxes();
-}
-
-function renderRoleBoxes() {
-  const box = $("roleBoxes"); box.innerHTML = "";
-  for (const n of Object.keys(roleIds)) {
-    const lbl = document.createElement("label");
-    lbl.style.cssText = "flex:0 0 auto;display:flex;align-items:center;gap:5px;margin:6px 10px 0 0";
-    const cb = document.createElement("input");
-    cb.type = "checkbox"; cb.value = n; cb.style.width = "auto"; cb.checked = n === "ROLE_EXPORTER";
-    lbl.appendChild(cb);
-    lbl.appendChild(document.createTextNode(n.replace("ROLE_", "")));
-    box.appendChild(lbl);
+  S.roles = {};
+  S.isAdmin = false;
+  if (!S.core || !S.account) {
+    $("rolesBadge").textContent = "no account";
+    $("rolesBadge").className = "badge";
+    renderRoleTable();
+    return;
   }
+  const held = [];
+  const keys = ["ROLE_IMPORTER", "ROLE_BANK", "ROLE_EXPORTER", "ROLE_LOGISTICS", "ROLE_VERIFIER", "ROLE_REGISTRY_ADMIN"];
+  const flags = await Promise.all(keys.map((n) => S.core.hasRole(S.roleIds[n], S.account)));
+  keys.forEach((n, i) => { S.roles[n] = flags[i]; if (flags[i]) held.push(n.replace("ROLE_", "")); });
+  S.isAdmin = await S.core.hasRole(S.roleIds.DEFAULT_ADMIN_ROLE, S.account);
+  if (S.isAdmin) held.push("ADMIN");
+  $("rolesBadge").textContent = held.length ? "roles: " + held.join(", ") : "no roles on this account";
+  $("rolesBadge").className = "badge " + (held.length ? "ok" : "warn");
+  renderRoleTable();
 }
 
-/* ----------------------------------------------------------------- render */
-function stepper(phase, term) {
-  const box = $("stepper"); box.innerHTML = "";
-  PHASES.forEach((p, i) => {
+function can(roleKey) {
+  if (!S.account) return false;
+  if (roleKey === "DEFAULT_ADMIN_ROLE") return S.isAdmin;
+  return Boolean(S.roles[roleKey]);
+}
+
+/* ================================================================ render */
+function renderAccountsBadge() {
+  $("balBadge").textContent = S.account ? "… " + S.tokenSymbol : "— " + S.tokenSymbol;
+  if (!S.token || !S.account) return;
+  S.token.balanceOf(S.account).then((b) => {
+    $("balBadge").textContent = `${fmt(b)} ${S.tokenSymbol}`;
+  }).catch(() => {});
+}
+
+function renderStepper(phase, reclaimed) {
+  const box = $("stepper");
+  box.innerHTML = "";
+  const order = [0, 1, 2, 3, 4, 5, 6];
+  order.forEach((i, idx) => {
     const el = document.createElement("span");
-    el.className = "step" + (i === phase ? " now" : i < phase ? " done" : "");
-    if (p === "Reclaimed") el.className = "step" + (phase === 7 ? " dead" : "");
-    const notes = { 0: "awaiting the bank", 1: "bank funded · shippable", 2: "hand over goods", 3: "bank examines", 4: "sight paid / deferred pending" };
-    el.textContent = p + (notes[i] ? ` · ${notes[i]}` : "");
+    el.className = "step" + (phase === 7 ? " done" : i === phase ? " now" : i < phase ? " done" : "");
+    el.textContent = PHASES[i];
     box.appendChild(el);
-    if (i < PHASES.length - 2) box.appendChild(Object.assign(document.createElement("span"), { textContent: "→", style: "align-self:center;color:#4a5568" }));
+    if (idx < order.length - 1) box.appendChild(Object.assign(document.createElement("span"), { className: "arrow", textContent: "→" }));
   });
-  const risk = { 0: "pickup", 1: "vessel loading", 2: "vessel loading", 3: "final delivery" }[term];
-  $("flowMeta").innerHTML =
-    `<div><b>Incoterm</b> ${INCOTERMS[term] ?? "—"}</div>` +
-    `<div><b>Risk-transfer milestone</b> ${risk ?? "—"}</div>` +
-    `<div><b>Payment</b> on honor of a complying presentation (sight / deferred)</div>` +
-    `<div><b>Title NFT transfers</b> at final delivery (tokenId = trade id)</div>`;
+  const dead = document.createElement("span");
+  dead.className = "step" + (reclaimed ? " dead" : "");
+  dead.textContent = PHASES[7];
+  box.appendChild(Object.assign(document.createElement("span"), { className: "arrow", textContent: "|" }));
+  box.appendChild(dead);
+}
+
+function renderFacts() {
+  const s = S.s;
+  if (!s) {
+    $("tradeFacts").innerHTML = kv([["Trade", "#" + tradeId()], ["Status", "no application yet"]]);
+    $("lcFacts").innerHTML = kv([["Credit", "not issued"]]);
+    $("nftFacts").innerHTML = kv([["Title token", "not minted"]]);
+    return;
+  }
+  const lc = S.lc;
+  const term = Number(s.term);
+  $("tradeFacts").innerHTML = kv([
+    ["Trade / order", `#${s.id} / #${s.orderId}`],
+    ["Incoterm", INCOTERMS[term] + " · risk at " + RISK_AT[term]],
+    ["Phase", PHASES[Number(s.phase)]],
+    ["Custody", CUSTODY[Number(s.custody)]],
+    ["Applicant (importer)", short(s.importer)],
+    ["Beneficiary (exporter)", short(s.exporter)],
+    ["Risk holder", short(s.riskHolder)],
+    ["Credit expires", ts(s.deadline)],
+  ]);
+  $("lcFacts").innerHTML = kv([
+    ["Issuing bank", lc.issuingBank === ethers.ZeroAddress ? "—" : short(lc.issuingBank)],
+    ["Amount", fmt(lc.amount) + " " + S.tokenSymbol],
+    ["Terms", PAYMENT_TERMS[Number(lc.term)] + (Number(lc.term) === 1 ? ` · +${lc.deferredDays}d` : "")],
+    ["Issued", lc.issued ? ts(lc.issuedAt) : "no"],
+    ["Presented", lc.presented ? ts(lc.presentedAt) : "no"],
+    ["Honored", lc.honored ? (Number(lc.term) === 0 ? "yes · paid at sight" : "yes · payable " + ts(lc.maturityAt)) : "no"],
+    ["Paid", lc.paid ? "yes" : "no"],
+    ["Reimbursed", lc.reimbursed ? ts(lc.reimbursedAt) : lc.paid ? "no — applicant owes the bank" : "—"],
+    ["Duty", Number(s.term) === 3 ? fmt(lc.dutyAmount) + " " + S.tokenSymbol + (lc.dutyPaid ? " (paid)" : " (unpaid)") : "— (only DDP)"],
+    ["Stipulated set", "0x" + Number(lc.requiredDocs).toString(16).padStart(2, "0")],
+  ]);
+  renderNft();
+}
+
+async function renderNft() {
+  if (!S.s) return;
+  const id = BigInt(S.s.id);
+  try {
+    if (!(await S.tracker.exists(id))) {
+      $("nftFacts").innerHTML = kv([["Title token", "not minted"]]);
+      return;
+    }
+    const [owner, uri] = await Promise.all([S.tracker.ownerOf(id), S.tracker.tokenURI(id)]);
+    const escrowed = owner.toLowerCase() === String(S.coreAddr).toLowerCase();
+    $("nftFacts").innerHTML = kv([
+      ["Token id", String(id)],
+      ["Owner", short(owner) + (escrowed ? " (escrowed by core)" : "")],
+      ["Document URI", uri || "—"],
+    ]);
+  } catch {
+    $("nftFacts").innerHTML = kv([["Title token", "unavailable"]]);
+  }
 }
 
 function kv(pairs) {
-  return pairs.map(([k, v]) => `<div><b>${k}</b> ${v}</div>`).join("");
+  return pairs.map(([k, v]) => `<div><b>${esc(k)}</b><span>${esc(v)}</span></div>`).join("");
+}
+
+/* -------------------------------------------------------------- workflow */
+function buildSteps() {
+  const s = S.s;
+  if (!s) return [];
+  const phase = Number(s.phase), term = Number(s.term), custody = Number(s.custody);
+  const lc = S.lc || {};
+  const examOk = S.exam.ok;
+  const rows = [];
+
+  rows.push({ key: "apply", title: "Importer applies for the credit", actor: "Importer", role: "ROLE_IMPORTER",
+    done: true, detail: `${PAYMENT_TERMS[Number(s.paymentTerm)]} · ${fmt(s.lcAmount)} ${S.tokenSymbol} · expires ${ts(s.deadline)}` });
+
+  rows.push({ key: "issue", title: "Issuing bank issues the credit and prefunds the escrow", actor: "Bank", role: "ROLE_BANK",
+    done: phase >= 1,
+    detail: phase >= 1 ? `${fmt(lc.amount)} ${S.tokenSymbol} escrowed by the bank` : "the bank needs a tUSD allowance for the core",
+    controls: phase >= 1 ? "" : `<button class="primary small" data-act="issue">Bank → issueLetterOfCredit</button>` });
+
+  rows.push({ key: "ship", title: "Beneficiary ships: invoice + packing list anchored, title minted", actor: "Exporter", role: "ROLE_EXPORTER",
+    done: phase >= 2,
+    detail: phase >= 2 ? "shipped" : "only the named beneficiary, only after issuance",
+    controls: phase >= 2 ? "" : `
+      <input id="invCid" class="mono" placeholder="invoice CID" value="${esc(S.draft.invCid)}" />
+      <input type="file" data-upload="invCid" />
+      <input id="packCid" class="mono" placeholder="packing-list CID" value="${esc(S.draft.packCid)}" />
+      <input type="file" data-upload="packCid" />
+      <button class="primary small" data-act="ship">Exporter → createShipment</button>` });
+
+  const missing = [];
+  for (let i = 0; i < DOCTYPES.length; i++) if (maskHas(S.mask, i) && !(S.docs[i] && S.docs[i].valid)) missing.push(DOCTYPES[i]);
+  rows.push({ key: "docs", title: "Stipulated document set is anchored and verified", actor: "Verifier / exporter / logistics", role: null,
+    done: examOk,
+    detail: examOk ? "the presentation set is complete" : `missing or revoked: ${missing.join(", ") || "examination failed — check the DDP duty and credit state"}`,
+    detailBad: !examOk,
+    controls: `<button class="small" data-goto="docs">Open documents</button>` });
+
+  rows.push({ key: "pickup", title: "Logistics confirms pickup", actor: "Logistics", role: "ROLE_LOGISTICS",
+    done: custody >= 1 || phase === 7,
+    detail: term === 0 ? "EXW: risk moves to the importer here (no payment)" : "custody milestone — no payment",
+    controls: custody >= 1 || phase === 7 ? "" : `<button class="primary small" data-act="pickup">Logistics → confirmPickup</button>` });
+
+  rows.push({ key: "loading", title: "Logistics confirms vessel loading and anchors the B/L", actor: "Logistics", role: "ROLE_LOGISTICS",
+    done: custody >= 2 || phase === 7,
+    detail: term === 1 || term === 2 ? "FOB/CIF: risk moves to the importer here (no payment)" : "B/L anchors the document of title URI",
+    controls: custody >= 2 || phase === 7 ? "" : `
+      <input id="blCid" class="mono" placeholder="B/L or AWB CID" value="${esc(S.draft.blCid)}" />
+      <input type="file" data-upload="blCid" />
+      <button class="primary small" data-act="loading">Logistics → confirmVesselLoading</button>` });
+
+  if (term === 3) {
+    rows.push({ key: "duty", title: "Customs duty is escrowed (DDP)", actor: "Exporter", role: "ROLE_EXPORTER",
+      done: Boolean(lc.dutyPaid),
+      detail: lc.dutyPaid ? `${fmt(lc.dutyAmount)} ${S.tokenSymbol} held for the treasury` : "must be paid before the bank honors",
+      controls: lc.dutyPaid ? "" : `
+        <input id="dutyAmt" value="${esc(S.draft.dutyAmt)}" style="max-width:120px" />
+        <button class="primary small" data-act="duty">Exporter → payCustomsDuty</button>` });
+  }
+
+  rows.push({ key: "present", title: "Beneficiary presents the documents", actor: "Exporter", role: "ROLE_EXPORTER",
+    done: phase >= 3,
+    detail: phase >= 3 ? "presentation recorded" : "requires the stipulated set above and an unexpired credit",
+    controls: phase >= 3 ? "" : `<button class="primary small" data-act="present">Exporter → presentDocuments</button>` });
+
+  rows.push({ key: "honor", title: "Issuing bank examines and honors the presentation", actor: "Bank", role: "ROLE_BANK",
+    done: phase >= 4 || Boolean(lc.paid),
+    detail: Number(s.paymentTerm) === 0 ? "sight: payment releases now" : `deferred: payable ${ts(lc.maturityAt)} after honor`,
+    controls: phase >= 4 || lc.paid ? "" : `<button class="primary small" data-act="honor">Bank → honorPresentation</button>` });
+
+  if (Number(s.paymentTerm) === 1) {
+    rows.push({ key: "draw", title: "Proceeds of the deferred credit are drawn at maturity", actor: "Anyone", role: null,
+      done: Boolean(lc.paid),
+      detail: lc.paid ? "paid" : `matures ${ts(lc.maturityAt)} — permissionless`,
+      controls: lc.paid ? "" : `<button class="small" data-act="draw">drawDeferredPayment</button>` });
+  }
+
+  rows.push({ key: "reimburse", title: "Applicant reimburses the issuing bank on-chain", actor: "Importer", role: "ROLE_IMPORTER",
+    done: Boolean(lc.reimbursed),
+    detail: lc.reimbursed ? ts(lc.reimbursedAt) : lc.paid ? `${fmt(lc.amount)} ${S.tokenSymbol} owed to the bank` : "after the proceeds are released",
+    controls: lc.reimbursed || !lc.paid ? "" : `<button class="small" data-act="reimburse">Importer → reimburseIssuingBank</button>` });
+
+  rows.push({ key: "deliver", title: "Importer confirms final delivery — title to the importer", actor: "Importer", role: "ROLE_IMPORTER",
+    done: custody >= 3,
+    detail: phase === 6 ? "settled" : phase === 5 ? "delivered — the credit settles once paid" : "requires vessel loading first",
+    controls: custody >= 3 ? "" : `<button class="primary small" data-act="deliver">Importer → confirmFinalDelivery</button>` });
+
+  return rows;
+}
+
+function renderSteps() {
+  const rows = buildSteps();
+  const nextIdx = rows.findIndex((r) => !r.done);
+  $("steps").innerHTML = rows.map((r, i) => {
+    const cls = r.done ? "done" : i === nextIdx ? "next" : "";
+    const mine = r.role ? (can(r.role) ? '<span class="pill ok">you hold this role</span>' : '<span class="pill warn">needs ' + r.role.replace("ROLE_", "") + "</span>") : "";
+    return `<div class="step-row ${cls}">
+      <div class="step-no">${r.done ? "✓" : i + 1}</div>
+      <div>
+        <div class="step-title">${esc(r.title)} <span class="actor">${esc(r.actor)}</span>${r.done ? '<span class="pill ok">done</span>' : ""}${mine}</div>
+        <div class="step-detail${r.detailBad ? " bad" : ""}">${esc(r.detail || "")}</div>
+        ${r.controls ? `<div class="step-controls">${r.controls}</div>` : ""}
+      </div>
+    </div>`;
+  }).join("") + exceptional();
+}
+
+function exceptional() {
+  if (!S.s) return "";
+  const phase = Number(S.s.phase);
+  const closed = phase === 6 || phase === 7;
+  return `<div class="step-row off">
+    <div class="step-no">!</div>
+    <div>
+      <div class="step-title">Exceptional paths <span class="actor">bank / importer</span></div>
+      <div class="step-detail">Use only to exercise the neutrality safeguards: bank force-finalisation after loading, or reclaim of an expired unused credit.</div>
+      <div class="step-controls">
+        <button class="small" data-act="force" ${closed ? "disabled" : ""}>Bank → forceFinalizeDelivery</button>
+        <button class="small" data-act="reclaim" ${closed ? "disabled" : ""}>reclaimExpiredLC (expired + unused → bank)</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderBanner() {
+  const b = $("banner");
+  if (!S.core) {
+    b.className = "banner";
+    b.textContent = "Load a core address to begin.";
+    return;
+  }
+  if (!S.s) {
+    b.className = "banner warn";
+    b.textContent = `Trade #${tradeId()} has no application yet. Fill in “Apply for a credit” below — the importer (${can("ROLE_IMPORTER") ? "your account can" : "switch to an importer account to"}) opens it.`;
+    return;
+  }
+  const next = buildSteps().find((r) => !r.done);
+  if (!next) {
+    b.className = "banner ok";
+    b.textContent = "Settled. Credit paid, goods delivered, title with the importer.";
+    return;
+  }
+  const needsRole = next.role && !can(next.role);
+  b.className = "banner " + (needsRole ? "warn" : "ok");
+  b.textContent = `Next: ${next.actor} — ${next.title}.` + (needsRole ? ` Switch the active account to one holding ${next.role.replace("ROLE_", "")}.` : "");
 }
 
 async function refresh() {
-  if (!core) return;
-  const idBig = BigInt($("shipId").value.trim() || "1");
-  let s = null;
-  try { s = await core.getShipment(idBig); } catch (e) { /* unknown id on some builds */ }
-  if (!s || s.importer === ethers.ZeroAddress) return renderEmpty(idBig);
-  const id = idBig.toString();
+  if (!S.core) return;
+  $("docTrade").textContent = "trade #" + tradeId();
   try {
-    $("term").value = INCOTERMS[Number(s.term)];
-    stepper(Number(s.phase), Number(s.term));
-    $("shipmentView").innerHTML = kv([
-      ["Trade", `#${s.id}`], ["Phase", PHASES[Number(s.phase)]],
-      ["Custody", CUSTODY[Number(s.custody)]],
-      ["Beneficiary", short(s.exporter)], ["Applicant", short(s.importer)],
-      ["Payment term", PAYMENT_TERMS[Number(s.paymentTerm)] + (Number(s.paymentTerm) === 1 ? ` (+${s.deferredDays}d)` : "")],
-      ["Risk holder", short(s.riskHolder)],
-      ["Created", new Date(Number(s.createdAt) * 1000).toLocaleString()],
-      ["Credit expires", new Date(Number(s.deadline) * 1000).toLocaleString()],
-    ]);
+    S.orders = Number(await S.core.orderCount());
+    S.shipments = Number(await S.core.shipmentCount());
+    $("counts").textContent = `orders ${S.orders} · shipments ${S.shipments}`;
+    $("explorer").innerHTML = S.chainId === SEPOLIA.id
+      ? `<a href="https://sepolia.etherscan.io/address/${esc(S.coreAddr)}#code" target="_blank" rel="noreferrer">core on Etherscan ↗</a>`
+      : "";
+  } catch { /* counts are best-effort */ }
+  loadTrades();
 
-    // order (application)
-    let orderHtml = "—";
-    try {
-      const o = await core.getOrder(s.orderId);
-      orderHtml = kv([
-        ["id", "#" + o.id], ["applicant (importer)", short(o.importer)], ["beneficiary (exporter)", short(o.exporter)],
-        ["term", INCOTERMS[Number(o.term)]], ["payment", PAYMENT_TERMS[Number(o.paymentTerm)] + (Number(o.paymentTerm) === 1 ? ` +${o.deferredDays}d` : "")],
-        ["L/C", fmt(o.lcAmount)],
-        ["deadline", new Date(Number(o.deadline) * 1000).toLocaleString()],
-      ]);
-    } catch {}
-    $("orderView").innerHTML = orderHtml;
-
-    // lc
-    const lc = await core.getLC(BigInt(id));
-    $("lcView").innerHTML = kv([
-      ["issuing bank", lc.issuingBank === ethers.ZeroAddress ? "—" : short(lc.issuingBank)],
-      ["beneficiary", lc.beneficiary === ethers.ZeroAddress ? "—" : short(lc.beneficiary)],
-      ["issued", String(lc.issued) + (lc.issued ? ` · ${fmt(lc.amount)} tUSD escrowed` : "")],
-      ["presented", String(lc.presented) + (lc.presented ? ` · ${new Date(Number(lc.presentedAt) * 1000).toLocaleTimeString()}` : "")],
-      ["honored", lc.honored
-        ? (Number(lc.term) === 0 ? "yes · sight paid" : `yes · payable ${new Date(Number(lc.maturityAt) * 1000).toLocaleTimeString()}`)
-        : "no"],
-      ["paid", String(lc.paid)], ["reclaimed", String(lc.reclaimed)],
-      ["reimbursed", lc.reimbursed
-        ? `yes · ${new Date(Number(lc.reimbursedAt) * 1000).toLocaleTimeString()}`
-        : (lc.paid ? "no — the applicant owes the bank" : "—")],
-      ["stipulated documents", String(lc.requiredDocs) + " (bitmask)"],
-      ["duty", fmt(lc.dutyAmount) + (lc.dutyPaid ? " (paid)" : " (unpaid)")],
-      ["duty payer", lc.dutyPayer === ethers.ZeroAddress ? "—" : short(lc.dutyPayer)],
-    ]);
-
-    // nft
-    let nft = "—";
-    try {
-      if (await tracker.exists(BigInt(id))) {
-        const [owner, uri] = await Promise.all([tracker.ownerOf(BigInt(id)), tracker.tokenURI(BigInt(id))]);
-        const escrowed = owner.toLowerCase() === (await core.getAddress()).toLowerCase();
-        nft = kv([["tokenId", id], ["owner", short(owner) + (escrowed ? " (escrowed by core)" : "")],
-                  ["tokenURI", uri || "—"]]);
-      } else nft = "not minted";
-    } catch { nft = "not minted"; }
-    $("nftView").innerHTML = nft;
-
-    await renderDocs(id, Number(s.term), Number(s.phase));
-    await renderGuide(s, lc);
-    await renderRegistry();
-  } catch (e) { log("refresh ✘ " + (e.shortMessage || e.message)); }
-}
-
-/** Fresh deployment (or an id that does not exist yet): show the flow from the top. */
-async function renderEmpty(idBig) {
-  const term = Math.max(0, INCOTERMS.indexOf($("term").value));
-  stepper(0, term);
-  $("shipmentView").innerHTML = kv([["Trade", `#${idBig}`], ["Status", "Not applied for yet"], ["Next", "Importer applies for a letter of credit"]]);
-  $("orderView").innerHTML = "no application yet";
-  $("lcView").innerHTML = "not issued";
-  $("nftView").innerHTML = "not minted";
-  const tb = $("docTable").querySelector("tbody"); tb.innerHTML = "";
-  const sel = $("docType"); sel.innerHTML = "";
-  for (let i = 0; i < DOCTYPES.length; i++) {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${DOCTYPES[i]}</td><td>${DOC_ROLE[i]}</td><td style="color:var(--bad)">missing</td><td>—</td><td>—</td>`;
-    tb.appendChild(tr);
-    if (i >= 2) {
-      const o = document.createElement("option");
-      o.value = i; o.textContent = `${DOCTYPES[i]} (by ${DOC_ROLE[i]})`;
-      sel.appendChild(o);
-    }
+  const id = tradeId();
+  let s = null;
+  try { s = await S.core.getShipment(id); } catch { s = null; }
+  if (!s || s.importer === ethers.ZeroAddress) {
+    S.s = null; S.lc = null;
+    S.docs = Array.from({ length: DOCTYPES.length }, () => ({ cid: "", issuer: ethers.ZeroAddress, timestamp: 0, valid: false }));
+    S.mask = 0;
+    try { S.mask = Number(await S.compliance.presentationMask(Number($("fTerm").value))); } catch {}
+    S.exam = { ok: false, missing: 0 };
+    renderStepper(0, false);
+    renderFacts();
+    renderBanner();
+    renderSteps();
+    renderDocs();
+    renderAccountsBadge();
+    renderAdmin();
+    return;
   }
-  const row = document.createElement("tr");
-  row.innerHTML = `<td colspan="5" style="color:var(--muted)">trade #${idBig} does not exist yet — apply for a credit first</td>`;
-  tb.appendChild(row);
-  const steps = [
-    { who: "Importer (applicant)", what: "createOrder(exporter, " + INCOTERMS[term] + ", amount, deadline, sight/deferred)" },
-    { who: "Issuing bank", what: "issueLetterOfCredit(orderId) → TradeUSD escrowed by the bank, beneficiary + documentary terms recorded" },
-    { who: "Exporter (beneficiary)", what: "createShipment(orderId, invoiceCID, packingListCID) → title NFT minted to the core" },
-  ];
-  $("guide").innerHTML = steps.map((st, i) =>
-    `<li class="${i === 0 ? "next" : ""}"><span class="who">${st.who}</span> — ${st.what}</li>`).join("");
-  await renderRegistry();
+
+  S.s = s;
+  S.lc = await S.core.getLC(id);
+  S.mask = Number(await S.core.presentationDocuments(id));
+  const docs = [];
+  for (let i = 0; i < DOCTYPES.length; i++) {
+    let rec = { cid: "", issuer: ethers.ZeroAddress, timestamp: 0, verified: false };
+    try { rec = await S.core.getDocument(id, i); } catch {}
+    docs.push({
+      cid: rec.cid, issuer: rec.issuer, timestamp: rec.timestamp,
+      valid: Boolean(rec.cid) && Boolean(rec.verified),
+    });
+  }
+  S.docs = docs;
+  try {
+    const ex = await S.core.examinePresentation(id);
+    S.exam = { ok: ex[0], missing: Number(ex[1]) };
+  } catch { S.exam = { ok: false, missing: 0 }; }
+
+  $("fExporter").value = s.exporter;
+  $("fTerm").value = String(Number(s.term));
+  $("fPay").value = String(Number(s.paymentTerm));
+  $("fAmount").value = fmt(s.lcAmount).replace(/,/g, "");
+  $("fDefer").value = String(s.deferredDays);
+  $("tradeId").value = String(id);
+
+  renderStepper(Number(s.phase), Number(s.phase) === 7);
+  renderFacts();
+  renderBanner();
+  renderSteps();
+  renderDocs();
+  renderAccountsBadge();
+  renderAdmin();
 }
 
-async function renderDocs(id, term, phase) {
-  const tb = $("docTable").querySelector("tbody"); tb.innerHTML = "";
-  const mask = Number(await core.presentationDocuments(BigInt(id)));
-  const sel = $("docType"); sel.innerHTML = "";
-  const idBig = BigInt(id);
+/* ------------------------------------------------------------- documents */
+function renderDocs() {
+  const tb = $("docTable").querySelector("tbody");
+  tb.innerHTML = "";
+  const examOk = S.exam && S.exam.ok;
+  $("docExam").textContent = !S.s ? "no trade selected" : examOk ? "presentation set complete" : "presentation set incomplete";
+  $("docExam").className = "badge " + (examOk ? "ok" : "warn");
   for (let i = 0; i < DOCTYPES.length; i++) {
-    const valid = await core.hasValidDocument(idBig, i);
-    // the anchor may live in a registry that was active when it was written
-    const reg = registryAt(await core.documentRegistryOf(idBig, i));
-    const rec = await reg.getDocument(idBig, i);
+    const d = (S.docs && S.docs[i]) || { cid: "", issuer: ethers.ZeroAddress, timestamp: 0, valid: false };
+    const stipulated = maskHas(S.mask, i);
+    const status = d.valid ? '<span class="pill ok">valid</span>' : d.cid ? '<span class="pill bad">revoked</span>' : '<span class="pill">missing</span>';
+    let actions = "";
+    if (S.s) {
+      if (ANCHORABLE.includes(i) && !d.cid) {
+        actions = `<div class="inline"><input class="mono" data-doc-input="${i}" placeholder="CID" /><input type="file" data-upload="doc${i}" /><button class="small" data-act="anchor" data-doc="${i}">Anchor</button></div>`;
+      } else if (d.cid) {
+        actions = `<button class="small" data-act="revoke" data-doc="${i}">Revoke</button>`;
+      } else {
+        actions = `<span class="hint">${i === 5 ? "at vessel loading" : "at shipment"}</span>`;
+      }
+    }
     const tr = document.createElement("tr");
     tr.innerHTML =
-      `<td>${DOCTYPES[i]}${(mask >> i) & 1 ? '<span class="pill">★ stipulated</span>' : ""}</td>` +
-      `<td>${DOC_ROLE[i]}</td>` +
-      `<td style="color:${valid ? "var(--ok)" : "var(--bad)"}">${valid ? "valid" : (rec.cid ? "revoked" : "missing")}</td>` +
-      `<td>${rec.issuer && rec.issuer !== ethers.ZeroAddress ? short(rec.issuer) : "—"}</td>` +
-      `<td class="mono">${rec.cid ? rec.cid.slice(0, 14) + "…" : "—"}</td>`;
+      `<td>${esc(DOCTYPES[i])}${stipulated ? ' <span class="pill ok">★ stipulated</span>' : ""}</td>` +
+      `<td>${esc(DOC_ROLE[i])}</td>` +
+      `<td>${status}</td>` +
+      `<td>${d.issuer && d.issuer !== ethers.ZeroAddress ? short(d.issuer) : "—"}</td>` +
+      `<td>${d.timestamp ? ts(d.timestamp) : "—"}</td>` +
+      `<td class="mono">${d.cid ? `<a href="#" data-cid="${esc(d.cid)}" class="cidLink">${esc(d.cid.slice(0, 18))}…</a>` : "—"}</td>` +
+      `<td>${actions}</td>`;
     tb.appendChild(tr);
-    if (i >= 2) {
-      const o = document.createElement("option");
-      o.value = i; o.textContent = `${DOCTYPES[i]} (by ${DOC_ROLE[i]})`;
-      sel.appendChild(o);
-    }
   }
-  const [ok, missing] = await core.examinePresentation(idBig);
-  const row = document.createElement("tr");
-  row.innerHTML = `<td colspan="5" style="color:${ok ? "var(--ok)" : "var(--warn)"}">
-    examination preview: ${ok ? "the presentation set is complete and verified — the bank may honor" : `not presentable yet — ${DOCTYPES[Number(missing)]} is missing or revoked`}</td>`;
-  tb.appendChild(row);
 }
 
-/** The full application flow, ticked off against on-chain state. */
-async function renderGuide(s, lc) {
-  const term = Number(s.term), id = s.id, phase = Number(s.phase), custody = Number(s.custody);
-  const docs = {};
-  for (let i = 0; i < DOCTYPES.length; i++) docs[i] = await core.hasValidDocument(id, i);
-  const steps = [
-    { who: "Importer (applicant)", what: "createOrder(exporter, " + INCOTERMS[term] + ", amount, deadline, " +
-      PAYMENT_TERMS[Number(s.paymentTerm)].toLowerCase() + ")", done: true },
-    { who: "Issuing bank", what: "issueLetterOfCredit(orderId) → the bank escrows " + fmt(s.lcAmount) +
-      " tUSD and records the beneficiary + documentary terms", done: phase >= 1 },
-    { who: "Exporter (beneficiary)", what: "createShipment(orderId, invoiceCID, packingListCID) → title NFT minted to the core",
-      done: phase >= 2 },
-  ];
-  if (term !== 0) steps.push({ who: "Verifier", what: "anchorDocument(id, InspectionCertificate)", done: docs[3] });
-  if (term === 2) steps.push({ who: "Verifier", what: "anchorDocument(id, InsuranceCertificate)", done: docs[4] });
-  if (term === 3) steps.push({ who: "Exporter", what: "anchorDocument(id, CertificateOfOrigin)", done: docs[2] });
-  steps.push({ who: "Logistics", what: "confirmPickup(id)" + (term === 0 ? " → EXW risk transfer" : ""),
-    done: custody >= 1 && phase !== 7 });
-  steps.push({ who: "Logistics", what: "confirmVesselLoading(id, blCid) → B/L anchored, URI set" +
-    (term === 1 || term === 2 ? " → FOB/CIF risk transfer" : ""), done: custody >= 2 && phase !== 7 });
-  if (term === 3) {
-    steps.push({ who: "Verifier", what: "anchorDocument(id, CustomsClearance)", done: docs[6] });
-    steps.push({ who: "Exporter", what: "payCustomsDuty(id, amount) — before the bank honors", done: lc.dutyPaid });
+/* ---------------------------------------------------------------- trades */
+async function loadTrades() {
+  const box = $("trades");
+  if (!S.core || !S.shipments) { box.innerHTML = '<span class="hint">No trades yet.</span>'; return; }
+  const rows = [];
+  const start = Math.max(1, S.shipments - 24);
+  for (let i = start; i <= S.shipments; i++) {
+    try {
+      const s = await S.core.getShipment(i);
+      const lc = await S.core.getLC(i);
+      rows.push(`<tr class="clickable" data-trade="${i}">
+        <td>#${i}</td><td>${INCOTERMS[Number(s.term)]}</td><td>${PHASES[Number(s.phase)]}</td>
+        <td>${CUSTODY[Number(s.custody)]}</td><td>${fmt(lc.amount)}</td>
+        <td>${PAYMENT_TERMS[Number(s.paymentTerm)]}</td></tr>`);
+    } catch { /* skip unreadable */ }
   }
-  steps.push({ who: "Exporter (beneficiary)", what: "presentDocuments(id) → the stipulated set is recorded for examination",
-    done: phase >= 3 });
-  steps.push({ who: "Issuing bank", what: "honorPresentation(id) — examines the presentation; sight pays now, deferred schedules maturity",
-    done: phase >= 4 || lc.paid });
-  if (Number(s.paymentTerm) === 1) {
-    steps.push({ who: "Anyone", what: "drawDeferredPayment(id) after maturity → proceeds to the beneficiary",
-      done: lc.paid });
-  }
-  steps.push({ who: "Importer / Bank", what: "confirmFinalDelivery(id) → title to importer → Settled (with a paid credit)",
-    done: phase >= 6 });
-  steps.push({ who: "Importer / Bank / Admin", what: "reclaimExpiredLC(orderId) — expired, unused credit returns to the issuing bank",
-    done: phase === 7 });
-  steps.push({ who: "Bank", what: "forceFinalizeDelivery(id) — only if the importer withholds after loading",
-    done: false, optional: true });
-
-  const nextIdx = steps.findIndex((st) => !st.done && !st.optional);
-  $("guide").innerHTML = steps.map((st, i) => {
-    const cls = st.done ? "done" : i === nextIdx ? "next" : "";
-    return `<li class="${cls}"><span class="who">${st.who}</span> — ${st.what}${st.optional ? ' <span class="pill">optional</span>' : ""}</li>`;
-  }).join("");
+  box.innerHTML = `<table><thead><tr><th>Trade</th><th>Incoterm</th><th>Phase</th><th>Custody</th><th>Amount</th><th>Terms</th></tr></thead><tbody>${rows.join("")}</tbody></table>`;
 }
 
-async function renderRegistry() {
+/* ----------------------------------------------------------------- admin */
+function renderRoleTable() {
+  const names = ["ROLE_IMPORTER", "ROLE_BANK", "ROLE_EXPORTER", "ROLE_LOGISTICS", "ROLE_VERIFIER", "ROLE_REGISTRY_ADMIN", "DEFAULT_ADMIN_ROLE"];
+  $("roleTable").innerHTML = names.map((n) => `<div><b>${n.replace("ROLE_", "")}</b><span>${can(n) ? "held by the active account" : "—"}</span></div>`).join("");
+  if (!$("roleBoxes").children.length) {
+    $("roleBoxes").innerHTML = ["ROLE_IMPORTER", "ROLE_BANK", "ROLE_EXPORTER", "ROLE_LOGISTICS", "ROLE_VERIFIER"].map((n, i) =>
+      `<label style="display:flex;gap:5px;align-items:center;font-size:12px;color:var(--muted)">
+        <input type="checkbox" style="width:auto" value="${n}" data-grant ${i === 0 ? "checked" : ""}/> ${n.replace("ROLE_", "")}
+      </label>`).join("");
+  }
+}
+
+async function renderAdmin() {
+  renderRoleTable();
+  if (!S.core) { $("adminInfo").innerHTML = "—"; return; }
   try {
-    const active = await core.documentRegistry();
-    const bound = await registryAt(active).core();
-    const out = kv([
-      ["active registry", short(active)],
-      ["bound to core", String(bound.toLowerCase() === (await core.getAddress()).toLowerCase())],
-      ["compliance", short(await core.complianceEngine())],
-      ["escrow balance", fmt(await loc.escrowBalance()) + " tUSD"],
-      ["shipments", (await core.shipmentCount()).toString()],
+    const [escrow, treasury, reg, comp, credit] = await Promise.all([
+      S.credit.escrowBalance(), S.credit.treasury(), S.core.documentRegistry(), S.core.complianceEngine(), S.core.letterOfCredit(),
     ]);
-    $("regView").innerHTML = out;
-  } catch {}
+    $("adminInfo").innerHTML = kv([
+      ["Core", S.coreAddr],
+      ["Shipment tracker (e-B/L)", short(await S.core.shipmentTracker())],
+      ["Document registry", short(reg)],
+      ["Letter of credit", short(credit)],
+      ["Compliance engine", short(comp)],
+      ["Settlement token", short(await S.core.settlementToken())],
+      ["Escrow balance", fmt(escrow) + " " + S.tokenSymbol],
+      ["Customs treasury", short(treasury)],
+      ["Orders / shipments", `${S.orders} / ${S.shipments}`],
+    ]);
+    $("treasuryAddr").placeholder = treasury;
+  } catch (e) {
+    $("adminInfo").innerHTML = kv([["Core", S.coreAddr], ["Read error", e.shortMessage || e.message]]);
+  }
 }
 
-/* ------------------------------------------------------------- ipfs helpers */
+/* ================================================================= send */
+let txChain = Promise.resolve();
+function send(label, fn) {
+  const run = async () => {
+    if (!S.signer) { log(`${label} ✘ connect a wallet (or set a local test key) to send transactions`, "bad"); return null; }
+    try {
+      log(label + " …");
+      const tx = await fn();
+      // Wait on the provider: one receipt poll instead of the block-event path, so a local
+      // node that mines instantly resolves without waiting for the next block.
+      const rc = await S.provider.waitForTransaction(tx.hash);
+      if (!rc) throw new Error("no receipt for " + tx.hash);
+      await refreshRoles();
+      await refresh();
+      log(`${label} ✔ ${rc.hash} (gas ${rc.gasUsed})`);
+      return rc;
+    } catch (e) {
+      const reason = e.info?.error?.message || e.shortMessage || e.reason || e.message;
+      log(`${label} ✘ ${reason}`, "bad");
+      return null;
+    }
+  };
+  const queued = txChain.then(run, run);
+  txChain = queued.catch(() => {});
+  return queued;
+}
+
+function coreAs() { return S.core.connect(S.signer); }
+
+async function chainNow() {
+  try { return Number((await S.provider.getBlock("latest")).timestamp); } catch { return Math.floor(Date.now() / 1000); }
+}
+
+/* ------------------------------------------------------------- ipfs utils */
 async function ipfsAdd(file) {
   const base = $("ipfsNode").value.replace(/\/$/, "");
-  const form = new FormData(); form.append("file", file);
+  const form = new FormData();
+  form.append("file", file);
   const res = await fetch(`${base}/api/v0/add?cid-version=1&quieter=true`, { method: "POST", body: form });
   if (!res.ok) throw new Error(`kubo add failed (${res.status})`);
   return (await res.json()).Hash;
@@ -709,120 +960,231 @@ async function ipfsCat(cid) {
   return res.blob();
 }
 
-/* ------------------------------------------------------------------ sender */
-/** Transactions are queued: two clicks in quick succession must not race on the nonce. */
-let txChain = Promise.resolve();
-function send(label, fn) {
-  const run = async () => {
-    if (!signer) { log(`${label} ✘ connect a wallet (or set a test key) to send transactions`); return null; }
-    try {
-      log(label + " …");
-      const tx = await fn();
-      const rc = await tx.wait();
-      await refresh();
-      if (label === "grantRoles") await refreshRoles();
-      // logged last, so the views are already up to date when the success line appears
-      log(`${label} ✔ tx ${rc.hash} (gas ${rc.gasUsed})`);
-      return rc;
-    } catch (e) {
-      const reason = e.info?.error?.message || e.shortMessage || e.reason || e.message;
-      log(`${label} ✘ ${reason}`);
-      return null;
+/* ============================================================ interaction */
+document.addEventListener("click", async (ev) => {
+  const tabBtn = ev.target.closest("[data-tab]");
+  if (tabBtn) {
+    document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b === tabBtn));
+    for (const t of ["flow", "docs", "admin", "log"]) $("tab-" + t).hidden = t !== tabBtn.dataset.tab;
+    return;
+  }
+  const goto = ev.target.closest("[data-goto]");
+  if (goto) {
+    document.querySelector(`.tabs button[data-tab="${goto.dataset.goto}"]`).click();
+    return;
+  }
+  const cidLink = ev.target.closest("[data-cid]");
+  if (cidLink) {
+    ev.preventDefault();
+    $("viewCid").value = cidLink.dataset.cid;
+    document.querySelector('.tabs button[data-tab="docs"]').click();
+    $("btnOpenCid").click();
+    return;
+  }
+  const tradeRow = ev.target.closest("[data-trade]");
+  if (tradeRow) {
+    $("tradeId").value = tradeRow.dataset.trade;
+    savePrefs();
+    await refresh();
+    return;
+  }
+  const btn = ev.target.closest("[data-act]");
+  if (!btn) return;
+  const id = tradeId();
+  switch (btn.dataset.act) {
+    case "issue":
+      return send("issueLetterOfCredit", () => coreAs().issueLetterOfCredit(id));
+    case "ship":
+      return send("createShipment", () => coreAs().createShipment(id, $("invCid").value.trim(), $("packCid").value.trim()));
+    case "pickup":
+      return send("confirmPickup", () => coreAs().confirmPickup(id));
+    case "loading":
+      return send("confirmVesselLoading", () => coreAs().confirmVesselLoading(id, $("blCid").value.trim()));
+    case "duty":
+      return send("payCustomsDuty", () => coreAs().payCustomsDuty(id, ethers.parseUnits($("dutyAmt").value || "0", 6)));
+    case "present":
+      return send("presentDocuments", () => coreAs().presentDocuments(id));
+    case "honor":
+      return send("honorPresentation", () => coreAs().honorPresentation(id));
+    case "draw":
+      return send("drawDeferredPayment", () => coreAs().drawDeferredPayment(id));
+    case "reimburse":
+      return send("reimburseIssuingBank", () => coreAs().reimburseIssuingBank(id));
+    case "deliver":
+      return send("confirmFinalDelivery", () => coreAs().confirmFinalDelivery(id));
+    case "force":
+      return send("forceFinalizeDelivery", () => coreAs().forceFinalizeDelivery(id));
+    case "reclaim":
+      return send("reclaimExpiredLC", () => coreAs().reclaimExpiredLC(id));
+    case "anchor": {
+      const i = btn.dataset.doc;
+      const input = document.querySelector(`[data-doc-input="${i}"]`);
+      return send("anchorDocument " + DOCTYPES[i], () => coreAs().anchorDocument(id, Number(i), input.value.trim()));
     }
-  };
-  const queued = txChain.then(run, run);
-  txChain = queued.catch(() => {});
-  return queued;
-}
-const need = () => { if (!core) { log("Load a core address first."); return false; } return true; };
-const shipId = () => BigInt($("shipId").value.trim() || "1");
+    case "revoke":
+      return send("revokeDocument " + DOCTYPES[btn.dataset.doc], () => coreAs().revokeDocument(id, Number(btn.dataset.doc)));
+    default:
+      return undefined;
+  }
+});
 
-/* -------------------------------------------------------------------- wire */
+// Keep step inputs when the panels re-render after a transaction.
+document.addEventListener("input", (ev) => {
+  if (ev.target.id && Object.prototype.hasOwnProperty.call(S.draft, ev.target.id)) S.draft[ev.target.id] = ev.target.value;
+});
+
+document.addEventListener("change", async (ev) => {
+  const up = ev.target.closest("[data-upload]");
+  if (!up) return;
+  const file = up.files && up.files[0];
+  if (!file) return;
+  const target = up.dataset.upload;
+  try {
+    log(`ipfs add ${file.name} …`);
+    const cid = await ipfsAdd(file);
+    const input = document.getElementById(target) || document.querySelector(`[data-doc-input="${target.replace("doc", "")}"]`);
+    if (input) input.value = cid;
+    if (Object.prototype.hasOwnProperty.call(S.draft, target)) S.draft[target] = cid;
+    $("uploadOut").textContent = `${file.name} → ${cid}`;
+    log("ipfs add ✔ " + cid);
+  } catch (e) {
+    log("ipfs add ✘ " + e.message, "bad");
+  }
+});
+
+/* ================================================================ wiring */
 $("preset").onchange = () => {
-  if ($("preset").value === "sepolia") { $("core").value = SEPOLIA.core; $("rpc").value = SEPOLIA.rpc; }
-  else { $("core").value = ""; $("rpc").value = "http://127.0.0.1:8545"; }
+  const v = $("preset").value;
+  if (v === "sepolia") { $("core").value = SEPOLIA.core; $("rpc").value = SEPOLIA.rpc; }
+  else if (v === "localhost") { $("core").value = ""; $("rpc").value = LOCAL_RPC; }
+  savePrefs();
 };
-$("preset").value = "sepolia"; $("core").value = SEPOLIA.core; $("rpc").value = SEPOLIA.rpc;
-
-$("btnConnect").onclick = connect;
-$("accountSelect").onchange = (event) => selectAccount(event.target.value);
+$("btnConnect").onclick = () => connect(true);
+$("accountSelect").onchange = (e) => selectAccount(e.target.value);
 $("btnLoad").onclick = () => loadCore();
 $("btnRefresh").onclick = () => refresh();
-$("shipId").onchange = () => refresh();
-$("term").onchange = () => refresh();
+$("tradeId").onchange = () => { savePrefs(); refresh(); };
+$("btnPrev").onclick = () => { $("tradeId").value = String(Math.max(1, Number(tradeId()) - 1)); savePrefs(); refresh(); };
+$("btnNext").onclick = () => { $("tradeId").value = String(Number(tradeId()) + 1); savePrefs(); refresh(); };
 
-$("btnApprove").onclick = () => need() && send("approve TradeUSD (core + credit escrow)", async () => {
-  // Two allowances are needed: the core pulls escrow/duty tokens, and the LetterOfCredit
-  // module pulls the applicant's reimbursement straight to the issuing bank.
-  const c = new ethers.Contract(await core.settlementToken(), TOKEN_ABI, signer);
-  const rc1 = await (await c.approve(await core.getAddress(), ethers.MaxUint256)).wait();
-  const rc2 = await (await c.approve(await core.letterOfCredit(), ethers.MaxUint256)).wait();
-  log(`approve ✔ core gas ${rc1.gasUsed} · credit gas ${rc2.gasUsed}`);
-  return rc2;
+$("btnOrder").onclick = () => send("createOrder", async () => {
+  const now = await chainNow();
+  const deferred = Number($("fPay").value) === 1;
+  const tx = await coreAs().createOrder(
+    $("fExporter").value.trim(),
+    Number($("fTerm").value),
+    ethers.parseUnits($("fAmount").value || "0", 6),
+    BigInt(now + 1) + BigInt(Number($("fDays").value || "30") * 86400),
+    Number($("fPay").value),
+    deferred ? BigInt($("fDefer").value || "0") : 0n
+  );
+  const rc = await tx.wait();
+  const created = Number(await S.core.orderCount());
+  $("tradeId").value = String(created);
+  return tx;
 });
-$("btnMint").onclick = () => need() && send("mint tUSD", () =>
-  core.mint($("mintTo").value.trim() || account, BigInt($("mintAmt").value) * UNIT));
-$("btnGrant").onclick = () => need() && send("grantRoles", () => {
-  const roles = [...$("roleBoxes").querySelectorAll("input:checked")].map((c) => roleIds[c.value]);
-  const to = $("grantee").value.trim() || account;
-  return core.grantRoles(roles, roles.map(() => to));
-});
-$("btnSwap").onclick = () => need() && send("setDocumentRegistry", () =>
-  core.setDocumentRegistry($("newRegistry").value.trim()));
 
-$("btnOrder").onclick = () => need() && send("createOrder", async () => {
-  // Base the deadline on the chain clock (a shifted local node would reject wall-clock math).
-  let now = Math.floor(Date.now() / 1000);
-  try { now = Number((await provider.getBlock("latest")).timestamp); } catch {}
-  const tx = await core.createOrder($("exporter").value.trim(), Number($("newTerm").value),
-    BigInt($("lcAmount").value) * UNIT,
-    BigInt(now + 1) + BigInt(Number($("days").value) * 86400),
-    Number($("newPaymentTerm").value),
-    Number($("newPaymentTerm").value) === 1 ? BigInt($("deferredDays").value || "3") : 0n);
-  await tx.wait(); $("shipOrderId").value = (await core.orderCount()).toString(); return tx;
+$("btnApprove").onclick = () => send("approve tUSD (core + credit module)", async () => {
+  const token = S.token.connect(S.signer);
+  const first = await token.approve(S.coreAddr, ethers.MaxUint256);
+  await S.provider.waitForTransaction(first.hash);
+  return token.approve(await S.core.letterOfCredit(), ethers.MaxUint256);
 });
-$("btnIssue").onclick = () => need() && send("issueLetterOfCredit", async () => {
-  const tx = await core.issueLetterOfCredit($("shipOrderId").value.trim());
-  await tx.wait(); $("shipId").value = $("shipOrderId").value.trim(); return tx;
+
+$("btnGrant").onclick = () => send("grantRoles", () => {
+  const roles = [...document.querySelectorAll("[data-grant]:checked")].map((c) => S.roleIds[c.value]);
+  if (!roles.length) throw new Error("select at least one role");
+  const to = $("grantee").value.trim() || S.account;
+  return coreAs().grantRoles(roles, roles.map(() => to));
 });
-$("btnShipment").onclick = () => need() && send("createShipment", async () => {
-  const tx = await core.createShipment($("shipOrderId").value.trim(), $("invCid").value.trim(), $("packCid").value.trim());
-  await tx.wait(); $("shipId").value = (await core.shipmentCount()).toString(); return tx;
-});
-$("btnPresent").onclick = () => need() && send("presentDocuments", () => core.presentDocuments(shipId()));
-$("btnHonor").onclick = () => need() && send("honorPresentation", () => core.honorPresentation(shipId()));
-$("btnDraw").onclick = () => need() && send("drawDeferredPayment", () => core.drawDeferredPayment(shipId()));
-$("btnAnchor").onclick = () => need() && send("anchorDocument", () =>
-  core.anchorDocument(shipId(), Number($("docType").value), $("docCid").value.trim()));
-$("btnRevoke").onclick = () => need() && send("revokeDocument", () =>
-  core.revokeDocument(shipId(), Number($("docType").value)));
-$("btnPickup").onclick = () => need() && send("confirmPickup", () => core.confirmPickup(shipId()));
-$("btnLoad2").onclick = () => need() && send("confirmVesselLoading", () =>
-  core.confirmVesselLoading(shipId(), $("blCid").value.trim()));
-$("btnDuty").onclick = () => need() && send("payCustomsDuty", () =>
-  core.payCustomsDuty(shipId(), BigInt($("duty").value || "0") * UNIT));
-$("btnDeliver").onclick = () => need() && send("confirmFinalDelivery", () => core.confirmFinalDelivery(shipId()));
-$("btnReimburse").onclick = () => need() && send("reimburseIssuingBank", () => core.reimburseIssuingBank(shipId()));
-$("btnForce").onclick = () => need() && send("forceFinalizeDelivery", () => core.forceFinalizeDelivery(shipId()));
-$("btnReclaim").onclick = () => need() && send("reclaimExpiredLC", () => core.reclaimExpiredLC(shipId()));
+
+$("btnMint").onclick = () => send("mint tUSD", () =>
+  coreAs().mint($("mintTo").value.trim() || S.account, ethers.parseUnits($("mintAmt").value || "0", 6)));
+
+$("btnTreasury").onclick = () => send("setTreasury", () => coreAs().setTreasury($("treasuryAddr").value.trim()));
+
+function modRoleValue() {
+  const v = $("modRole").value;
+  if (v === "admin") return ethers.ZeroHash;
+  if (v === "controller") return ethers.id("CONTROLLER_ROLE");
+  if (v === "bank") return S.roleIds.ROLE_BANK;
+  return $("modCustom").value.trim();
+}
+async function modAddress() {
+  const map = { registry: "documentRegistry", credit: "letterOfCredit", compliance: "complianceEngine" };
+  return S.core[map[$("modModule").value]]();
+}
+$("btnModGrant").onclick = () => send("setModuleRole(grant)", async () =>
+  coreAs().setModuleRole(await modAddress(), modRoleValue(), $("modAccount").value.trim() || S.account, true));
+$("btnModRevoke").onclick = () => send("setModuleRole(revoke)", async () =>
+  coreAs().setModuleRole(await modAddress(), modRoleValue(), $("modAccount").value.trim() || S.account, false));
+
+$("btnSwap").onclick = () => send("setDocumentRegistry", () => coreAs().setDocumentRegistry($("newRegistry").value.trim()));
+
+$("btnAdvance").onclick = async () => {
+  if (S.chainId !== 31337n) return log("Time travel is only available on a local Hardhat node.", "bad");
+  try {
+    const local = new ethers.JsonRpcProvider($("rpc").value || LOCAL_RPC);
+    const secs = Math.round(Number($("advDays").value || "1") * 86400);
+    await local.send("evm_increaseTime", [secs]);
+    await local.send("evm_mine", []);
+    log(`Advanced chain time by ${$("advDays").value} day(s).`);
+    await refresh();
+  } catch (e) {
+    log("advance ✘ " + (e.shortMessage || e.message), "bad");
+  }
+};
+
+$("btnOpenCid").onclick = async () => {
+  const cid = $("viewCid").value.trim();
+  if (!cid) return log("Enter a CID first.", "bad");
+  try {
+    const blob = await ipfsCat(cid);
+    window.open(URL.createObjectURL(blob), "_blank");
+    log("ipfs cat ✔ " + cid);
+  } catch (e) {
+    log("ipfs cat ✘ " + e.message, "bad");
+  }
+};
 
 $("ipfsFile").onchange = async (e) => {
-  const f = e.target.files && e.target.files[0]; if (!f) return;
-  try { const cid = await ipfsAdd(f); $("docCid").value = cid; log(`ipfs add ✔ ${cid}`); }
-  catch (err) { log("ipfs add ✘ " + err.message); }
-};
-$("btnViewDoc").onclick = async () => {
-  const cid = $("docCid").value.trim(); if (!cid) return log("Enter a CID first.");
-  try { const blob = await ipfsCat(cid); window.open(URL.createObjectURL(blob), "_blank"); log(`ipfs cat ✔ ${cid}`); }
-  catch (err) { log("ipfs cat ✘ " + err.message); }
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  try {
+    $("viewCid").value = await ipfsAdd(f);
+    $("uploadOut").textContent = `${f.name} → ${$("viewCid").value}`;
+    log("ipfs add ✔ " + $("viewCid").value);
+  } catch (err) {
+    log("ipfs add ✘ " + err.message, "bad");
+  }
 };
 
+$("btnClearLog").onclick = () => { logLines.length = 0; $("log").textContent = "Ready."; };
+
 if (window.ethereum?.on) {
-  window.ethereum.on("accountsChanged", (accounts) => connect(false));
+  window.ethereum.on("accountsChanged", () => connect(false));
   window.ethereum.on("chainChanged", () => connect(false));
 }
-// Initialise views without opening MetaMask's permission prompt on page load.
-connect(false);
+
+/* ------------------------------------------------------------- boot */
+(function boot() {
+  let saved = {};
+  try { saved = { core: localStorage.getItem("tradechain.core"), rpc: localStorage.getItem("tradechain.rpc"), preset: localStorage.getItem("tradechain.preset"), trade: localStorage.getItem("tradechain.trade") }; } catch {}
+  const preset = saved.preset || "sepolia";
+  $("preset").value = preset;
+  if (preset === "sepolia") {
+    $("core").value = saved.core || SEPOLIA.core;
+    $("rpc").value = saved.rpc || SEPOLIA.rpc;
+  } else {
+    $("core").value = saved.core || "";
+    $("rpc").value = saved.rpc || (preset === "localhost" ? LOCAL_RPC : "");
+  }
+  $("tradeId").value = saved.trade || "1";
+  // Render the empty shell, then connect without opening a wallet permission prompt.
+  renderStepper(0, false);
+  renderDocs();
+  connect(false);
+})();
 </script>
 </body>
 </html>

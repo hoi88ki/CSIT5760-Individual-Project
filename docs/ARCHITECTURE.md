@@ -92,8 +92,9 @@ the id is also the `ShipmentTracker` token id. The credit lifecycle lives on the
 | `setModuleRole(module, role, account, granted)` | admin | module is a core companion | grants/revokes a module role; `ModuleRoleSet` |
 
 **Views:** `getOrder`, `getShipment`, `getDocument`, `getLC`, `orderCount`, `shipmentCount`,
-`hasValidDocument`, `documentRegistryOf`, `requiredDocumentsAt(id, custody)`, `isCompliant(id, custody)`,
-`presentationDocuments(id)`, `examinePresentation(id)` (bank's examination preview), plus
+`hasValidDocument`, `documentRegistryOf`, `presentationDocuments(id)`, `examinePresentation(id)`
+(bank's examination preview); the custody-gate masks are read through `ComplianceEngine`
+(`requiredForShipment(id, custody)`, `isCompliant(id, term, custody)`), plus
 companion-address getters (`settlementToken`, `shipmentTracker`, `documentRegistry`,
 `complianceEngine`, `letterOfCredit`). The title token is read through `ShipmentTracker`
 (`ownerOf`, `tokenURI`, `exists`).
@@ -136,15 +137,15 @@ registry swap never changes the validity of documents that are already anchored.
 Documents and certificate metadata live on **IPFS**. Each participant (exporter, importer, bank,
 logistics, verifier) runs its **own kubo node** and **keeps its own copy**; the issuing role uploads
 to its own node and the resulting **CID** is anchored on-chain. Any involved party can then read the
-document through the DApp by pointing at the node that holds a copy. Because CIDs are
+document through the console by pointing at the node that holds a copy. Because CIDs are
 content-addressed, every copy serves the same bytes, so there is exactly **one CID per
 `(shipment, DocType)`** and **no contract change** is needed for this topology.
 
 Only CIDs are stored on-chain, so gas is constant-bounded per document and independent of file
-size. `scripts/ipfs-add.js` (with `--api <multiaddr>`) uploads to a role's node; the DApp's
-per-role node field (`src/ipfs.js`) targets the active role's node for both **upload** and
-**retrieval** (`ipfs cat`); and `scripts/ipfs-pin.js` lets a counterparty keep its own copy of a
-CID. The React DApp reads on-chain state and calls the core directly. Setup and the
+size. `scripts/ipfs-add.js` (with `--api <multiaddr>`) uploads to a role's node; the console's
+per-role **IPFS node** field targets the active role's node for both **upload** and **retrieval**
+(`ipfs cat`); and `scripts/ipfs-pin.js` lets a counterparty keep its own copy of a CID. The console
+reads on-chain state and calls the core directly. Setup and the
 upload/retrieve flow are in [`IPFS_CONSORTIUM.md`](./IPFS_CONSORTIUM.md).
 
 **Limitations.** CIDs are public on-chain, so per-role nodes give *consortium-only retrieval* by

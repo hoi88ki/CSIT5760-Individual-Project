@@ -1,7 +1,7 @@
 # TradeChain — Per-role IPFS (one node per participant)
 
 Each participant runs its **own** kubo node and **keeps its own copy** of the documents it handles.
-Documents are addressed by **CID**, so any involved party can retrieve a document through the DApp
+Documents are addressed by **CID**, so any involved party can retrieve a document through the console
 by pointing at the node that holds a copy. Only the CID is anchored on-chain.
 
 The blockchain is unchanged by this topology: `DocumentRegistry` stores **one CID per
@@ -35,13 +35,13 @@ IPFS_PATH=./.ipfs-exporter ipfs daemon
    ```bash
    node scripts/ipfs-add.js invoice.pdf --api /ip4/127.0.0.1/tcp/5001
    ```
-   (The DApp does the same via the **IPFS node** field in panel 2.)
+   (The console does the same via the **IPFS node** field on the Documents tab.)
 2. **Anchor the CID on-chain** (`createShipment` / `anchorDocument` / `confirmVesselLoading`).
-3. **Any involved party reads the document through the DApp.** In the **Document viewer** panel,
-   point the *IPFS node* field at the node that holds the copy (e.g. the exporter's `:5001`) and
-   open the anchored CID:
+3. **Any involved party reads the document through the console.** In the Documents tab, point the
+   *IPFS node* field at the node that holds the copy (e.g. the exporter's `:5001`) and open the
+   anchored CID:
    ```bash
-   # underlying call the DApp makes
+   # underlying call the console makes
    ipfs cat bafy... --api /ip4/127.0.0.1/tcp/5001
    # or via the gateway: http://127.0.0.1:8080/ipfs/bafy...
    ```

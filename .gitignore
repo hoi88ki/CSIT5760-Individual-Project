@@ -65,14 +65,6 @@ tmp/
 # --------------------------------
 *.bkp
 
-# --------------------------------
-# DApp (Vite / React)
-# --------------------------------
-dapp/.next/
-dapp/out/
-dapp/dist/
-dapp/node_modules/
-dapp/.env.local
 
 QUESTIONS.md
 CSIT5760*

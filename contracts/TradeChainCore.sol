@@ -25,7 +25,7 @@ import {LetterOfCredit} from "./core/LetterOfCredit.sol";
 ///         administration are managed from this single authority (`setModuleRole`). The active
 ///         `DocumentRegistry` is swappable by the admin or `ROLE_REGISTRY_ADMIN`
 ///         (`setDocumentRegistry`), and the registry used for each anchor is snapshotted so a
-///         swap never orphans documents that are already anchored. The DApp interacts with one
+///         swap never orphans documents that are already anchored. The console interacts with one
 ///         address while six contracts are deployed.
 contract TradeChainCore is AccessControl, IERC721Receiver {
     using SafeERC20 for IERC20;

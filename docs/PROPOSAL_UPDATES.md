@@ -73,13 +73,13 @@ Also add a phrase to §5 `DocumentRegistry.sol`: "per `DocType`, records the CID
 ### B.8 — IPFS topology  *(one node per role)*
 **Where:** §6 Technology Stack, row **"IPFS …"**; the **React (Vite)** row; §4 *Trade Document Management*; §5 `DocumentRegistry.sol`; §9 Phase 3.
 **Change to:** replace the single-node / Pinata wording with a **per-role** model:
-> "**IPFS — one node per role.** Each participant (exporter, importer, bank, logistics, verifier) runs its own kubo node and keeps its own copy. The issuing role adds the document to its own node; the on-chain record stores only the **CID** (one CID per `(shipment, DocType)`). Any involved party can read the document by its CID through the DApp; because CIDs are content-addressed, integrity is guaranteed regardless of which node responds, and *no per-role on-chain records are needed*."
+> "**IPFS — one node per role.** Each participant (exporter, importer, bank, logistics, verifier) runs its own kubo node and keeps its own copy. The issuing role adds the document to its own node; the on-chain record stores only the **CID** (one CID per `(shipment, DocType)`). Any involved party can read the document by its CID through the console; because CIDs are content-addressed, integrity is guaranteed regardless of which node responds, and *no per-role on-chain records are needed*."
 
 **Confirmed design (see [`IPFS_CONSORTIUM.md`](./IPFS_CONSORTIUM.md)):**
 - **Each role keeps its own copy.** Each role runs its own kubo node; a counterparty that needs a
   document can pull it onto its own node with `ipfs pin add <cid>` (helper: `scripts/ipfs-pin.js`).
-- **Access is through the DApp.** Any involved party reads a document by its CID by pointing the
-  DApp's *Document viewer* at the node that holds a copy.
+- **Access is through the console.** Any involved party reads a document by its CID by pointing the
+  console's *Documents* tab at the node that holds a copy.
 - **Confidentiality is out of scope.** CIDs are public on-chain; the model gives consortium retrieval
   by convention, not cryptographic secrecy. Restricting the swarm or encrypting is optional.
 - **Availability** depends on a copy existing somewhere — a CID whose only holder is offline (and
@@ -142,7 +142,7 @@ six contracts (`TradeChainCore`, `LetterOfCredit`, `ShipmentTracker`, `Complianc
 `DocumentRegistry`, `TradeUSD`), role-gated minting, per-Incoterm compliance, final-delivery title
 release, consortium (per-role) IPFS, and no dispute module / no `Pausable`. The e-B/L ERC-721
 document of title is **inside `ShipmentTracker`** (`tokenId == shipmentId`), so there is no separate
-`ShipmentNFT` contract. See [`REFACTOR_PLAN.md`](./REFACTOR_PLAN.md) for the mapping.
+`ShipmentNFT` contract.
 
 ---
 
@@ -203,7 +203,7 @@ transfers described as holder-restricted.
 
 | # | Question | Decision |
 |---|----------|----------|
-| 1 | IPFS replication | **Per-role kubo nodes; each role keeps its own copy.** Any involved party reads a document by CID through the DApp; a counterparty may keep an extra copy with `scripts/ipfs-pin.js`. |
+| 1 | IPFS replication | **Per-role kubo nodes; each role keeps its own copy.** Any involved party reads a document by CID through the console; a counterparty may keep an extra copy with `scripts/ipfs-pin.js`. |
 | 2 | Confidentiality | Out of scope (public CIDs); the model gives consortium retrieval by convention, not cryptographic secrecy. Restricting the swarm / encrypting is optional. |
 | 3 | Quality bar | **≥ 90 % branch/statement coverage, 0 High Slither findings** (Medium triaged). Implemented: 100 % statements / **93.88 % branch** / 100 % functions / 100 % lines; CI fails on High. |
 | 4 | Document count | **Seven** `DocType`s incl. **Customs Clearance**. |

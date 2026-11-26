@@ -100,7 +100,7 @@ forgery. TradeChain removes the trusted intermediary for the *verification and s
 
 Companion contracts accept state changes **only from the core** — their mutators are gated by a
 `CONTROLLER_ROLE` that only the core holds, and that role is administered by the core's own
-`AccessControl` (`setModuleRole`) — and they expose public views, so the DApp interacts with a single
+`AccessControl` (`setModuleRole`) — and they expose public views, so the console interacts with a single
 address while six contracts are deployed.
 `ShipmentTracker` is also the ERC-721 document of title (`tokenId == shipmentId`); `_update` rejects
 every externally initiated ERC-721 transfer, so the holder cannot move the title — only the core's
@@ -238,7 +238,7 @@ Bank       forceFinalizeDelivery(id)                  → if the importer withho
 │   │   └── TradeUSD.sol                # ERC-20 stablecoin (role-gated mint)
 │   ├── libraries/TradeTypes.sol        # shared enums/structs
 │   └── mocks/MaliciousReentrancy.sol   # adversarial settlement token (tests only)
-├── test/                               # 130-test Hardhat suite
+├── test/                               # 135-test Hardhat suite
 │   ├── helpers/fixture.js
 │   ├── Order.test.js · DocumentRegistry.test.js · ComplianceEngine.test.js
 │   ├── Incoterms.e2e.test.js · Neutrality.test.js · AccessControl.test.js
@@ -252,22 +252,18 @@ Bank       forceFinalizeDelivery(id)                  → if the importer withho
 │   ├── verify.js                       # Etherscan verification helper
 │   ├── ipfs-add.js                     # upload to a role's kubo node → CIDv1
 │   └── ipfs-pin.js                     # keep a counterparty's own copy of a CID
-├── docker-compose.yml                  # packages both UIs (flow console :8080, dashboard :8081)
-├── dapp/                               # React (Vite) + ethers v6 + MetaMask dashboard
-│   └── src/ipfs.js · src/App.jsx       # upload + document-viewer (retrieve by CID from a node)
-├── ui/                                 # single-file HTML/JS console (no build step)
-│   └── index.html                      # credit/custody stepper, flow guide, all workflow/admin actions
+├── docker-compose.yml                  # serves the console on :8080
+├── ui/                                 # the UI: single-file HTML/JS console (no build step)
+│   ├── index.html                      # flow, documents, admin and activity in one page
+│   └── ethers.umd.min.js               # vendored ethers v6 (works offline)
 ├── docs/
-│   ├── FRONTENDS.md                    # MetaMask setup, account/network behavior, troubleshooting
 │   ├── ARCHITECTURE.md · DESIGN_DECISIONS.md · SECURITY.md
 │   ├── IPFS_CONSORTIUM.md              # per-role nodes, upload/retrieve flow
-│   ├── REFACTOR_PLAN.md                # 6-contract restructure plan
 │   ├── PROPOSAL_UPDATES.md             # proposal ↔ implementation mapping
 │   └── diagrams/TradeChain.drawio      # architecture diagram (+ PNG used in the proposal)
 ├── deployments/                        # deployment records (Sepolia committed; localhost ignored)
 ├── .github/workflows/ci.yml
 ├── hardhat.config.js · .solhint.json · slither.config.json · .solcover.js
-├── CHANGES.md                          # change history + open clarifications
 └── README.md
 ```
 
@@ -278,10 +274,10 @@ Bank       forceFinalizeDelivery(id)                  → if the importer withho
 | **Solidity `^0.8.24`** (compiled 0.8.28 / Cancun) | Smart contracts | Custom errors, packed structs, checked arithmetic. |
 | **Hardhat + Mocha/Chai + `solidity-coverage` + `hardhat-gas-reporter`** | Tests, coverage, gas | De-facto standard local EVM suite. |
 | **OpenZeppelin Contracts v5** | `ERC721URIStorage`, `ERC20`, `AccessControl`, `ReentrancyGuard`, `SafeERC20` | Audited building blocks. |
-| **IPFS — one node per participant** | Off-chain documents + certificate metadata | Each role keeps its own copy; any involved party reads a document by CID through the DApp. Only CIDs reach the chain. Hosted Pinata only as a convenience. |
+| **IPFS — one node per participant** | Off-chain documents + certificate metadata | Each role keeps its own copy; any involved party reads a document by CID through the console. Only CIDs reach the chain. Hosted Pinata only as a convenience. |
 | **Slither & Solhint** | Static analysis | Automatic detection of reentrancy/access-control issues. |
 | **GitHub Actions CI** | Compile + test + coverage + Slither | Citable evidence for the security/coverage criteria. |
-| **React (Vite) + Ethers.js v6 + MetaMask** | Role dashboard | Wallet-connect stack; uploads to a role's kubo node, reads documents back by CID, triggers core workflows. |
+| **Static HTML/JS console + Ethers.js v6 + MetaMask** | The single UI | No build step; wallet-connect stack; uploads to a role's kubo node, reads documents back by CID and drives every core workflow from one page. |
 | **Ethereum Sepolia Testnet** | Deployment + Etherscan verification | Public, verifiable end-to-end demo. |
 
 ## 6. Getting Started
@@ -297,7 +293,7 @@ Bank       forceFinalizeDelivery(id)                  → if the importer withho
 ```bash
 npm install
 npx hardhat compile
-npx hardhat test                     # 130 passing
+npx hardhat test                     # 135 passing
 npx hardhat coverage                 # 100 % stmts · 98.76 % branch · 100 % funcs · 100 % lines
 npm run gas                          # optional gas report
 ```
@@ -341,64 +337,49 @@ transaction record (Etherscan links, blocks, gas, on-chain checks) to
 `deployments/<network>-demo-log.md`. The recorded run against the live deployment is committed at
 [`deployments/sepolia-demo-log.md`](./deployments/sepolia-demo-log.md).
 
-### Both UIs with docker compose
+### The console (`ui/`) — one interface, no build step
+
+The whole application is a single page with four tabs driven by on-chain state:
+
+| Tab | Contents |
+|---|---|
+| **Flow** | trade selector, phase/custody stepper, credit and title viewers, the application form, and every workflow step with its own action button (issue, ship, pickup, loading, duty, present, honor, deferred draw, reimbursement, delivery, plus the force-finalize / reclaim safeguards) |
+| **Documents** | the seven `(trade, DocType)` anchors with validity, issuer and CID, anchor/revoke controls and the stipulated-set marker |
+| **Admin / setup** | deployment addresses, escrow balance, treasury, role grants, tUSD minting, module roles, registry swap and a local-chain clock |
+| **Activity** | the transaction log, including the revert reason of a refused step |
 
 ```bash
-docker compose up --build
-```
-
-| Service | URL | Contents |
-|---|---|---|
-| Flow console | <http://localhost:8080/ui/index.html> | `ui/` served by nginx (pre-set to the verified Sepolia deployment) |
-| Role dashboard | <http://localhost:8081> | `dapp/` built with Vite and served by nginx (reads the chain via `VITE_RPC_URL`, default a public Sepolia node) |
-
-Transactions always need a wallet in the browser (import the role accounts you use for the demo).
-To point the packaged dashboard at a local node instead: `VITE_RPC_URL=http://host.docker.internal:8545 docker compose up --build`.
-
-### React DApp
-
-```bash
-npx hardhat node                                              # terminal 1
-npx hardhat run scripts/deploy.js --network localhost         # copy the core address
-cd dapp && npm install && npm run dev                         # terminal 2 → http://localhost:5173
-
-A step-by-step **multi-account simulation of the whole L/C workflow** (application → bank issuance
-→ shipment → presentation → honor → delivery, plus deferred maturity and expiry reclaim) is in
-[`docs/FRONTENDS.md`](./docs/FRONTENDS.md).
-```
-
-Paste the `TradeChainCore` address and click **Connect MetaMask / Load**. MetaMask prompts for
-account access; select an account that has the role required for the action, and confirm the network
-matches the deployment. The app listens for account/network changes. If MetaMask is unavailable, the
-configured JSON-RPC endpoint is used (Hardhat exposes unlocked local accounts; other endpoints are
-normally read-only). See [`dapp/README.md`](./dapp/README.md) and the [frontend guide](./docs/FRONTENDS.md).
-
-### Plain HTML console (`ui/`) — no build step
-
-A single-file dashboard that walks the **whole credit workflow**: credit/custody stepper, a
-per-Incoterm flow guide ticked off against on-chain state, document table with validity/issuer/CID,
-L/C viewer (issuing bank, beneficiary, presentation/honor state, maturity), title-NFT viewer, and
-`setModuleRole`).
-
-```bash
-npx hardhat node                                        # terminal 1 (optional, local demo)
+npx hardhat node                                        # terminal 1 (local demo)
 npx hardhat run scripts/deploy.js --network localhost
 python -m http.server 8090                              # terminal 2  (or: npx serve)
 # open http://127.0.0.1:8090/ui/index.html
 ```
 
-- Opens pre-set to the verified Sepolia deployment without opening a wallet permission prompt. It
-  uses a previously authorized MetaMask account if one exists; otherwise it is read-only. Click
-  **Connect wallet** to authorize MetaMask for transactions, then choose the active authorized account
-  from the header menu (or use the test-only in-memory key only with a local Hardhat node). Account and
-  network changes are reflected by the console.
-- `ethers` is vendored locally (`ui/ethers.umd.min.js`), so it also works offline.
-- Transactions are queued, so clicking two actions in quick succession cannot race on the nonce.
+- Opens pre-set to the verified Sepolia deployment without a wallet prompt; it uses a previously
+  authorized MetaMask account if one exists, otherwise it is read-only. **Connect wallet** authorizes
+  MetaMask, and the header account menu switches between authorized accounts — choose the account
+  that holds the role the next step needs (each step shows whether it does).
+- Each step is marked done from on-chain state, the next step is highlighted, and its button is
+  labelled with the acting role. Refusals (wrong role, missing document, premature draw) revert and
+  are reported in the Activity tab, so negative paths can be exercised from the same page.
+- `ethers` is vendored locally (`ui/ethers.umd.min.js`), so it also works offline. Transactions are
+  queued, so two quick clicks cannot race on the nonce.
+- The setup bar's **Local test signer** accepts a Hardhat account key, so a local node can be driven
+  without a wallet extension. It is used only when no injected wallet is present.
+
+### Docker
+
+```bash
+docker compose up --build        # → http://localhost:8080/ui/index.html
+```
+
+Transactions need a wallet in the browser (import the role accounts you use for the demo); on a
+local Hardhat node the in-page test signer also works.
 
 ### Off-chain documents (per-role IPFS)
 
-Each role runs its own kubo node and keeps its own copy; the DApp's **IPFS node** field targets the
-active role's node for **upload** and for **retrieval** (Document viewer):
+Each role runs its own kubo node and keeps its own copy; the console's **IPFS node** field targets the
+active role's node for **upload** and for **retrieval** (Documents tab):
 
 ```bash
 node scripts/ipfs-add.js path/to/invoice.pdf                                 # default node (:5001)
@@ -447,31 +428,6 @@ blocks, gas, on-chain checks) is committed at
 (funding, role grants, mints, allowances) at
 [`deployments/sepolia-accounts-setup.md`](./deployments/sepolia-accounts-setup.md).
 
-> Earlier deployments are archived for evidence: 22 November 2026
-> ([pre-rework](./deployments/sepolia-2026-11-22.json)) and the 25 November pre-reimbursement
-> suite ([archived record](./deployments/sepolia-2026-11-25-pre-reimburse.json)).
-
-| Contract | Address |
-|----------|---------|
-| `TradeChainCore` | [`0x0372C1F622c6b46919a70a89EF85306565Eb98C5`](https://sepolia.etherscan.io/address/0x0372C1F622c6b46919a70a89EF85306565Eb98C5#code) |
-| `ShipmentTracker` (e-B/L ERC-721) | [`0x41edc2FF37b7ce6Da9aD27d1aabDa703e2989539`](https://sepolia.etherscan.io/address/0x41edc2FF37b7ce6Da9aD27d1aabDa703e2989539#code) |
-| `DocumentRegistry` (swappable) | [`0x9eCE26443f9647D1Cb715aB7971B5554a964695e`](https://sepolia.etherscan.io/address/0x9eCE26443f9647D1Cb715aB7971B5554a964695e#code) |
-| `ComplianceEngine` | [`0x259684bb5c5b9198FffA4502248611C356844761`](https://sepolia.etherscan.io/address/0x259684bb5c5b9198FffA4502248611C356844761#code) |
-| `LetterOfCredit` | [`0xdC6Ee51c61226CC0E42C76921e94C011196A0650`](https://sepolia.etherscan.io/address/0xdC6Ee51c61226CC0E42C76921e94C011196A0650#code) |
-| `TradeUSD` (ERC-20) | [`0x2C262BE7C837E0236FC0346Ad70d6e86ECCb445d`](https://sepolia.etherscan.io/address/0x2C262BE7C837E0236FC0346Ad70d6e86ECCb445d#code) |
-
-Deployer: `0xCE4b0826b1B5d4bEA67EED5212Ae0AA5ec6c8664`. In this demo deployment, the five
-operational roles initially point to the deployer address; the admin can assign distinct wallets with
-`grantRoles`.
-
-Creation transactions: `TradeUSD` `0x513ec4fc6d3cae33aa88b022dc31f087937c92cef53f62b3849c6b1209fc4509`
-(block 12186124) and `TradeChainCore` `0x034ee59f424030c31e8d38f4c4ed41b94b9979f351b169fb2dfa62581851d4d3`
-(block 12186125) — the core's transaction also created the four companion contracts in its constructor.
-
-> This deployment supersedes the 5 November 2026 suite
-> ([archived record](./deployments/sepolia-2026-11-05.json)); the earlier contracts implement the
-> pre-swap registry design and are kept only as historical evidence.
-
 ## 8. Step-by-step Verification Walkthrough
 
 Run these later to confirm every claim. Each step lists the expected result.
@@ -487,7 +443,7 @@ npx solhint "contracts/**/*.sol"
 ```
 
 - [ ] `compile` → `Compiled 39 Solidity files successfully`
-- [ ] `test` → `130 passing`
+- [ ] `test` → `135 passing`
 - [ ] `coverage` → **100 % statements · 98.76 % branch · 100 % functions · 100 % lines** (mocks excluded)
 - [ ] `solhint` → no errors
 
@@ -506,24 +462,20 @@ npx hardhat run scripts/seed-demo.js --network localhost
 - [ ] The deferred flow schedules the payout and draws it after maturity; the reclaim returns the
       funds to the issuing bank
 
-### C. React DApp / HTML console
+### C. The console (`ui/index.html`)
 
 ```bash
-cd dapp && npm install && npm run dev     # http://localhost:5173
-# or, without a build step:
 python -m http.server 8090                # → http://127.0.0.1:8090/ui/index.html
 ```
 
-- [ ] Paste the local `TradeChainCore` address → **Connect MetaMask / Load** (or connect to local RPC)
-- [ ] As the **importer**: `createOrder` (application with sight/deferred terms)
-- [ ] As the **bank**: approve TradeUSD, then `issueLetterOfCredit` (escrow funded by the bank)
+- [ ] Paste the local `TradeChainCore` address → **Load core** (pre-set to Sepolia otherwise)
+- [ ] As the **importer**: `createOrder` (application with sight/deferred terms) — the new trade is selected
+- [ ] As the **bank**: **Approve tUSD**, then `issueLetterOfCredit` (escrow funded by the bank)
 - [ ] As the **exporter**: `createShipment` (refused before issuance), then `presentDocuments`
-- [ ] As the **verifier/logistics**: anchor certificates, `confirmPickup`, `confirmVesselLoading`
-- [ ] As the **bank**: `honorPresentation`; as the **importer**: `confirmFinalDelivery` → `Settled`
-- [ ] **Shipment viewer** shows phase/custody + document flags; **Document viewer** opens a CID
-- [ ] `ui/index.html` → the credit/custody stepper advances and the flow guide ticks each step off
-
-A full click-by-click, multi-account walkthrough is in [`docs/FRONTENDS.md`](./docs/FRONTENDS.md).
+- [ ] As the **verifier/logistics**: anchor certificates in **Documents**, then `confirmPickup`, `confirmVesselLoading`
+- [ ] As the **bank**: `honorPresentation`; as the **importer**: `reimburseIssuingBank`, then `confirmFinalDelivery` → `Settled`
+- [ ] The Flow tab ticks each step off from on-chain state and highlights the next one
+- [ ] The Documents tab shows validity, issuer and CID per `DocType`; a refused action appears in **Activity**
 
 ### D. Off-chain documents (per-role IPFS)
 
@@ -533,7 +485,7 @@ node scripts/ipfs-add.js ./some.pdf --api /ip4/127.0.0.1/tcp/5001     # issuing 
 ipfs cat <cid> --api /ip4/127.0.0.1/tcp/5011                          # another role reads it
 ```
 
-- [ ] The CID produced on one node is readable from another node (or through the DApp viewer)
+- [ ] The CID produced on one node is readable from another node (or through the console viewer)
 - [ ] The same bytes always produce the same CID (content addressing)
 
 ### E. Sepolia (already deployed & verified — re-check any time)
@@ -586,7 +538,7 @@ npx hardhat run scripts/smoke.js  --network sepolia
 | Modules | Internal guards reached directly (issuance/presentation/honor/draw/reclaim ordering, duty forwarding, reclaim window) | `Modules.test.js` |
 | Security | Adversarial settlement token (sight honor and deferred draw); Slither + coverage in CI | Single payout; no High findings |
 
-Current result: **130 tests passing · 100 % statements · 98.76 % branches · 100 % functions ·
+Current result: **135 tests passing · 100 % statements · 98.76 % branches · 100 % functions ·
 100 % lines** (mocks excluded via `.solcover.js`).
 
 ## 11. CI / Static Analysis
@@ -599,19 +551,18 @@ security criteria and its report is retained as a build artifact.
 
 | Phase | Activities | Deliverable | Status |
 |-------|------------|-------------|--------|
-| **Phase 1** | Develop the six contracts + tests | Compiling, tested suite | ✅ done (130 tests) |
+| **Phase 1** | Develop the six contracts + tests | Compiling, tested suite | ✅ done (135 tests) |
 | **Phase 2** | Security review, adversarial tests, coverage | ≥ 90 % branch coverage, Slither report | ✅ done (100 % stmts / 98.76 % branch) |
-| **Phase 3** | Sepolia deploy + verify, DApp + flow console, report | Verified contracts, DApp, report | ✅ done **deploy + verify done · report drafted** (`CSIT5760_Final_Project_Report_21232072.docx`) |
-| **Phase 4** | Bank-issued documentary-credit rework (order → issuance → shipment → presentation → honor) | Reworked contracts, tests, UIs, scripts, docs; UI-simulated multi-account walkthrough | ✅ done (this change; see `CHANGES.md` and `TODO.md`) |
+| **Phase 3** | Sepolia deploy + verify, console, report | Verified contracts, console, report | ✅ done **deploy + verify done · report drafted** (`CSIT5760_Final_Project_Report_21232072.docx`) |
+| **Phase 4** | Bank-issued documentary-credit rework (order → issuance → shipment → presentation → honor) | Reworked contracts, tests, one UI, scripts, docs | ✅ done |
 
-Progress log: see `git log --oneline` and [`CHANGES.md`](./CHANGES.md).
+Progress log: see `git log --oneline`.
 
 ## 13. Proposal Updates & Design Decisions
 
 - [`docs/PROPOSAL_UPDATES.md`](./docs/PROPOSAL_UPDATES.md) — proposal ↔ implementation mapping.
-- [`docs/REFACTOR_PLAN.md`](./docs/REFACTOR_PLAN.md) — the restructure design.
 - [`docs/DESIGN_DECISIONS.md`](./docs/DESIGN_DECISIONS.md) · [`docs/SECURITY.md`](./docs/SECURITY.md).
-- [`CHANGES.md`](./CHANGES.md) — change history and open clarifications.
+- [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) — contract map and data flow.
 
 ## 14. References
 
