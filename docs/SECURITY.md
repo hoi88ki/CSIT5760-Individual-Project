@@ -15,7 +15,7 @@
   anchoring, replacement and revocation, so their record stays final.
 - **The settlement token is trusted.** `TradeUSD` is injected; a malicious token cannot break
   `nonReentrant`/CEI (proved by `MaliciousReentrancy`), but could censor transfers.
-- **Only the core mutates.** Every companion's mutators are gated by a `CONTROLLER_ROLE` that only
+- **Only the core mutates.** Every companion contract's mutators are gated by a `CONTROLLER_ROLE` that only
   the core holds, and each module's `AccessControl` is mounted on the core (the core holds
   `DEFAULT_ADMIN_ROLE` and administers module roles via `setModuleRole`), so module state can only
   change through the role-gated facade.
@@ -76,9 +76,10 @@ Mocks are excluded from the coverage denominator via `.solcover.js`.
 - **Trusted examination.** On-chain examination proves only that required document slots are
   anchored and currently verified. The contract cannot read IPFS contents, assess documentary
   wording, or make UCP 600/ISBP discrepancy decisions; the bank remains a trusted examiner.
-- **No refusal / discrepancy notices.** A timely, compliant presentation locks the credit until the
-  bank honors it — there is no on-chain refusal path (UCP 600 Art. 16). If the bank stalls, funds
-  and title stay escrowed; refusal/discrepancy notices are future work.
+- **No formal refusal / discrepancy-notice workflow.** A timely, compliant presentation locks the credit until the
+  bank honors it — there is no on-chain refusal or notice-recording path (real UCP 600 Art. 16
+  treatment is not implemented). If the bank stalls, funds and title stay escrowed; refusal and
+  discrepancy notices are future work.
 - **100% cash prefunding.** The bank prefunds every credit, making the undertaking deterministic
   but unlike real contingent L/Cs backed by credit lines or collateral.
 - **Deferred terms are elapsed calendar time after acceptance.** Banking-day calendars, holidays,

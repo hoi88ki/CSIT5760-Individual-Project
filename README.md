@@ -1,7 +1,7 @@
 # TradeChain — A Decentralized International Trade & Document Tracker
 
 > **CSIT5760 Blockchain and Smart Contracts — Individual Project**
-> Student: YUNG HOI KI (21232072) · Instructor: Pritom Rajkhowa · Network: **Ethereum Sepolia Testnet**
+> Student: YUNG HOI KI (21232072) · Network: **Ethereum Sepolia Testnet**
 > Repository: `https://github.com/hoi88ki/CSIT5760-Individual-Project`
 
 TradeChain is an on-chain documentary trade-finance and supply-chain tracker built as **six
@@ -64,10 +64,10 @@ forgery. TradeChain removes the trusted intermediary for the *verification and s
 
 | ID | Objective | Success criterion |
 |----|-----------|-------------------|
-| **OBJ-1** | Document registry + e-B/L token | Each document type is anchored by its designated role; anchored CIDs cannot be silently replaced; public title-token transfers are blocked and the token is released to the importer only at final delivery. |
-| **OBJ-2** | Role-based access control | Every privileged function reverts for accounts lacking the required role (the bank issues, examines and honors; only the named beneficiary ships and presents); an access-control matrix test passes. |
+| **OBJ-1** | Document registry + e-B/L token | Each document type is anchored by its designated role; live anchors cannot be silently replaced, corrections require the role-gated event-logged path, public title-token transfers are blocked, and the token is released to the importer at final delivery or reclaimed for the exporter. |
+| **OBJ-2** | Role-based access control | Every privileged function reverts for accounts lacking the required role (the bank issues, examines and honors; only the named beneficiary ships and presents); the access-control matrix tests pass. |
 | **OBJ-3** | Incoterm-aware tracking & settlement | The credit's stipulated document set and custody gates follow the Incoterm; DDP blocks honor until clearance + duty; risk transfers at the Incoterm milestone independently of payment. |
-| **OBJ-4** | Deploy, test & verify | Contracts deployed and source-verified (see [§7](#7-sepolia-deployment-verified)); ≥ 90 % branch coverage; 0 High Slither findings; positive/negative/boundary tests passing. |
+| **OBJ-4** | Deploy, test & verify | Contracts deployed and source-verified (see [§7](#7-sepolia-deployment-verified)); the suite currently has 143 passing tests, 96.89 % branch coverage, and CI is configured to fail on High-severity Slither findings. |
 
 ## 3. System Architecture
 
@@ -243,7 +243,7 @@ Bank       forceFinalizeDelivery(id)                  → if the importer withho
 │   │   └── TradeUSD.sol                # ERC-20 stablecoin (role-gated mint)
 │   ├── libraries/TradeTypes.sol        # shared enums/structs
 │   └── mocks/MaliciousReentrancy.sol   # adversarial settlement token (tests only)
-├── test/                               # 135-test Hardhat suite
+├── test/                               # 143-test Hardhat suite
 │   ├── helpers/fixture.js
 │   ├── Order.test.js · DocumentRegistry.test.js · ComplianceEngine.test.js
 │   ├── Incoterms.e2e.test.js · Neutrality.test.js · AccessControl.test.js

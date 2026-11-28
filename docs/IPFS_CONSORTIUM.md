@@ -68,8 +68,9 @@ ipfs daemon --offline # Offline mode to disable swarm
 
 ## 3. Availability & confidentiality
 
-- **The CID is the authority.** Any node holding the same bytes serves the same CID; integrity is
-  guaranteed regardless of which node responds. No single authoritative node.
+- **The CID identifies the authority's content.** Any node holding the same bytes serves the same CID;
+  CID matching verifies content integrity against the bytes supplied at retrieval. No single
+  authoritative node; an unavailable or compromised endpoint may still prevent or misrepresent viewing.
 - **Availability depends on the copy existing somewhere.** If the only holder of a CID goes offline
   and no counterparty kept a copy, the on-chain anchor survives but the file cannot be fetched —
   make extra copies for long-lived documents.
