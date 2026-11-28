@@ -106,7 +106,7 @@ coverage with 0 High Slither findings** (Medium triaged), and **seven** document
 ### B.11 — Metric consistency  *(a considerably high bar is enough)*
 **Where:** §7 last row; §8 Testing Plan; §9 Work Plan Phase 2.
 **Change to:** align on one clearly-high bar:
-> "**0 High-severity Slither findings** (Medium findings are reported and triaged manually), **≥ 90 % statement and branch coverage**." (The repo reaches 100 % statements / **93.88 % branch**.)
+> "**0 High-severity Slither findings** (Medium findings are reported and triaged manually), **≥ 90 % statement and branch coverage**." (The repo reaches 100 % statements / **96.89 % branch**.)
 
 ---
 
@@ -115,7 +115,7 @@ coverage with 0 High Slither findings** (Medium triaged), and **seven** document
 ### C.12 — Objectives not measurable  *(suggest change)*
 **Where:** §3 Project Objectives table.
 **Suggested replacements (keep the same IDs):**
-- **OBJ-1** — "Implement the document registry and e-B/L token." *Success:* "Each of the seven document types is anchored by its designated role; an anchored CID cannot be replaced; unauthorised anchors revert; the e-B/L token transfers to the importer only at the Incoterm-correct milestone."
+- **OBJ-1** — "Implement the document registry and e-B/L token." *Success:* "Each of the seven document types is anchored by its designated role; an anchored CID can only be replaced through the role-gated, event-logged `replaceDocument`; unauthorised anchors and replacements revert; the e-B/L token transfers to the importer only at the Incoterm-correct milestone."
 - **OBJ-2** — "Implement role-based access control." *Success:* "Every privileged function reverts with `AccessControlUnauthorizedAccount`/`Unauthorized` for accounts lacking the required role; an access-control matrix test passes."
 - **OBJ-3** — "Implement Incoterm-aware shipment tracking and settlement." *Success:* "All four Incoterms (EXW/FOB/CIF/DDP) settle at the correct risk-transfer milestone; DDP blocks until customs clearance and duty are complete; the required-document set is validated per Incoterm."
 - **OBJ-4** — "Deploy, test and verify on Sepolia." *Success:* "All six contracts verified on Etherscan; ≥ 90 % statement/branch coverage; 0 High Slither findings; all positive/negative/boundary tests passing."
@@ -205,6 +205,6 @@ transfers described as holder-restricted.
 |---|----------|----------|
 | 1 | IPFS replication | **Per-role kubo nodes; each role keeps its own copy.** Any involved party reads a document by CID through the console; a counterparty may keep an extra copy with `scripts/ipfs-pin.js`. |
 | 2 | Confidentiality | Out of scope (public CIDs); the model gives consortium retrieval by convention, not cryptographic secrecy. Restricting the swarm / encrypting is optional. |
-| 3 | Quality bar | **≥ 90 % branch/statement coverage, 0 High Slither findings** (Medium triaged). Implemented: 100 % statements / **93.88 % branch** / 100 % functions / 100 % lines; CI fails on High. |
+| 3 | Quality bar | **≥ 90 % branch/statement coverage, 0 High Slither findings** (Medium triaged). Implemented: 100 % statements / **96.89 % branch** / 100 % functions / 100 % lines; CI fails on High. |
 | 4 | Document count | **Seven** `DocType`s incl. **Customs Clearance**. |
 | 5 | `ShipmentTracker` + `ShipmentNFT` | **Merge into one** (`tokenId == shipmentId`); title transfer gated in `_update`. |

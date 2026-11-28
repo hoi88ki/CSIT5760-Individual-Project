@@ -6,10 +6,12 @@ import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {TradeTypes} from "../libraries/TradeTypes.sol";
 
 /// @title DocumentRegistry — IPFS document anchors and verification status
-/// @notice Stores one immutable CID per `(shipment, DocType)` together with its issuer, timestamp
-///         and a verifiable `verified` flag. A second anchor for the same slot reverts
-///         (anchor-once-then-lock); a verifier certificate can later be revoked by clearing
-///         `verified`, which invalidates the document at compliance time.
+/// @notice Stores one CID per `(shipment, DocType)` together with its issuer, timestamp and a
+///         verifiable `verified` flag. A **live** anchor is immutable: anchoring over it reverts
+///         (`DocumentLocked`). Revoking clears `verified`, which invalidates the document at
+///         compliance time and re-opens the slot for a replacement anchor. An existing anchor
+///         (valid or revoked) can also be replaced through `replace`, which re-verifies the slot
+///         and emits `DocumentReplaced` with the previous CID so the change stays auditable.
 /// @dev    Access control is **mounted on the `TradeChainCore`**: the core is granted
 ///         `DEFAULT_ADMIN_ROLE` and `CONTROLLER_ROLE` at construction, and both mutators are
 ///         `CONTROLLER_ROLE`-gated, so the core remains the only writer while the core's own
@@ -37,6 +39,13 @@ contract DocumentRegistry is AccessControl {
         string cid
     );
     event DocumentRevoked(uint256 indexed id, TradeTypes.DocType indexed docType);
+    event DocumentReplaced(
+        uint256 indexed id,
+        TradeTypes.DocType indexed docType,
+        address indexed issuer,
+        string oldCid,
+        string newCid
+    );
 
     constructor(address core_) {
         if (core_ == address(0)) revert ZeroAddress();
@@ -45,7 +54,8 @@ contract DocumentRegistry is AccessControl {
         _grantRole(CONTROLLER_ROLE, core_);
     }
 
-    /// @notice Anchors a document once. `issuer` is the role-verified account supplied by the core.
+    /// @notice Anchors a document once. A revoked slot may be re-anchored with a replacement CID.
+    ///         `issuer` is the role-verified account supplied by the core.
     function anchor(
         uint256 id,
         TradeTypes.DocType docType,
@@ -55,7 +65,8 @@ contract DocumentRegistry is AccessControl {
         if (bytes(cid).length == 0) revert EmptyCID();
 
         TradeTypes.DocRecord storage rec = _documents[id][docType];
-        if (bytes(rec.cid).length != 0) revert DocumentLocked(id, docType);
+        // A live anchor is immutable; only a revoked one (`verified == false`) may be re-anchored.
+        if (bytes(rec.cid).length != 0 && rec.verified) revert DocumentLocked(id, docType);
 
         rec.cid = cid;
         rec.issuer = issuer;
@@ -63,6 +74,29 @@ contract DocumentRegistry is AccessControl {
         rec.verified = true;
 
         emit DocumentAnchored(id, docType, issuer, cid);
+    }
+
+    /// @notice Replaces the CID of an existing anchor (valid or revoked) and re-verifies it.
+    ///         The previous CID is kept in the event log. `issuer` is the authorized account
+    ///         supplied by the core.
+    function replace(
+        uint256 id,
+        TradeTypes.DocType docType,
+        string calldata cid,
+        address issuer
+    ) external onlyRole(CONTROLLER_ROLE) {
+        if (bytes(cid).length == 0) revert EmptyCID();
+
+        TradeTypes.DocRecord storage rec = _documents[id][docType];
+        if (bytes(rec.cid).length == 0) revert DocumentNotFound(id, docType);
+
+        string memory oldCid = rec.cid;
+        rec.cid = cid;
+        rec.issuer = issuer;
+        rec.timestamp = uint64(block.timestamp);
+        rec.verified = true;
+
+        emit DocumentReplaced(id, docType, issuer, oldCid, cid);
     }
 
     /// @notice Revokes a previously verified document (invalid at compliance time).

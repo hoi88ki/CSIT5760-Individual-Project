@@ -326,9 +326,12 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
             emit AtomicLCPayoutExecuted(id, s.exporter, s.lcAmount);
         }
 
+        // Only a credit whose proceeds are released is settled: a deferred credit honored after
+        // delivery stays `Honored` until `drawDeferredPayment` pays it (otherwise the draw would
+        // be unreachable and the escrow stranded).
         shipmentTracker.setPhase(
             id,
-            s.custody == TradeTypes.Custody.Delivered
+            paidNow && s.custody == TradeTypes.Custody.Delivered
                 ? TradeTypes.Phase.Settled
                 : TradeTypes.Phase.Honored
         );
@@ -351,15 +354,38 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
     }
 
     /// @notice Anchors a certificate of origin (exporter) or a verifier-attested document.
-    ///         Certificates may only be anchored once the goods are shipped against the credit.
+    ///         Certificates may only be anchored once the goods are shipped against the credit,
+    ///         and not after the trade is settled or reclaimed (a closed record is final).
     function anchorDocument(uint256 id, TradeTypes.DocType docType, string calldata cid) external {
-        TradeTypes.Shipment memory s = _requireShipment(id);
+        TradeTypes.Shipment memory s = _requireActive(id);
         bytes32 role = _roleForDocType(docType);
         if (!hasRole(role, msg.sender)) revert Unauthorized(msg.sender);
-        if (uint8(s.phase) < uint8(TradeTypes.Phase.Shipped) || s.phase == TradeTypes.Phase.Reclaimed) {
-            revert InvalidStateRange(id, s.phase);
-        }
+        if (uint8(s.phase) < uint8(TradeTypes.Phase.Shipped)) revert InvalidStateRange(id, s.phase);
         _anchor(id, docType, cid, msg.sender);
+    }
+
+    /// @notice Replaces an existing document anchor with a new CID, for any `DocType` — including
+    ///         the invoice, packing list and B/L anchored by a milestone. Authorized accounts: the
+    ///         original issuer, the designated role for that `DocType`, or the admin. The anchor
+    ///         is re-verified, so a revoked document can be corrected instead of blocking the
+    ///         trade; the previous CID stays in the registry's `DocumentReplaced` event. Blocked
+    ///         once the trade is settled or reclaimed. Replacing the B/L also updates the title
+    ///         token URI.
+    function replaceDocument(uint256 id, TradeTypes.DocType docType, string calldata cid) external {
+        _requireActive(id);
+        DocumentRegistry reg = DocumentRegistry(documentRegistryOf(id, docType));
+        if (
+            !hasRole(DEFAULT_ADMIN_ROLE, msg.sender) &&
+            !hasRole(_anchorRoleForDocType(docType), msg.sender) &&
+            msg.sender != reg.issuerOf(id, docType)
+        ) revert Unauthorized(msg.sender);
+
+        reg.replace(id, docType, cid, msg.sender);
+        _docRegistryOf[id][docType] = address(reg);
+
+        if (docType == TradeTypes.DocType.BillOfLadingOrAWB) {
+            shipmentTracker.setTokenURI(id, string.concat("ipfs://", cid));
+        }
     }
 
     /// @notice The applicant (importer) reimburses the issuing bank on-chain for the credit
@@ -480,8 +506,10 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
         emit LCReclaimed(orderId, bank, s.lcAmount, dutyRefund);
     }
 
-    /// @notice Revokes a document: the original issuer or the admin.
+    /// @notice Revokes a document: the original issuer or the admin. Blocked once the trade is
+    ///         settled or reclaimed, so a closed trade's document record stays final.
     function revokeDocument(uint256 id, TradeTypes.DocType docType) external {
+        _requireActive(id);
         DocumentRegistry reg = DocumentRegistry(documentRegistryOf(id, docType));
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
             if (msg.sender != reg.issuerOf(id, docType)) revert Unauthorized(msg.sender);
@@ -493,6 +521,20 @@ contract TradeChainCore is AccessControl, IERC721Receiver {
     // Internal engine
     // ---------------------------------------------------------------------
 
+    /// @dev Designated anchor role of a `DocType` (used for authorization, not for restricting
+    ///      which types may be anchored through `anchorDocument`).
+    function _anchorRoleForDocType(TradeTypes.DocType docType) internal pure returns (bytes32) {
+        if (
+            docType == TradeTypes.DocType.CommercialInvoice ||
+            docType == TradeTypes.DocType.PackingList ||
+            docType == TradeTypes.DocType.CertificateOfOrigin
+        ) return ROLE_EXPORTER;
+        if (docType == TradeTypes.DocType.BillOfLadingOrAWB) return ROLE_LOGISTICS;
+        return ROLE_VERIFIER;
+    }
+
+    /// @dev Types that may be anchored through `anchorDocument` (the others are anchored by a
+    ///      milestone: invoice/packing at shipping, B/L at loading).
     function _roleForDocType(TradeTypes.DocType docType) internal pure returns (bytes32) {
         if (docType == TradeTypes.DocType.CertificateOfOrigin) return ROLE_EXPORTER;
         if (

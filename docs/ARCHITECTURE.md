@@ -80,14 +80,15 @@ the id is also the `ShipmentTracker` token id. The credit lifecycle lives on the
 | `honorPresentation(id)` | **Bank** | presented, stipulated set still valid on-chain, (DDP) duty paid | examines; sight: pays now; deferred: schedules `maturityAt` → `Honored` |
 | `drawDeferredPayment(id)` | anyone after maturity | honored, not paid, `block.timestamp ≥ maturityAt` | releases the proceeds → `Settled` if delivered |
 | `reimburseIssuingBank(orderId)` | Importer (the trade's applicant) | credit `paid` (proceeds released), not already reimbursed | pulls `lc.amount` TradeUSD from the importer **to the issuing bank** on-chain; `LC.reimbursed = true` |
-| `anchorDocument(id, docType, cid)` | per-DocType role | phase ≥ `Shipped`, anchorable type | anchors once; verified |
+| `anchorDocument(id, docType, cid)` | per-DocType role | phase ≥ `Shipped`, anchorable type, slot missing or revoked | anchors verified; a live anchor is locked, a revoked slot is re-anchored |
+| `replaceDocument(id, docType, cid)` | designated role for the `DocType`, original issuer, or admin | trade not `Settled`/`Reclaimed`, document exists | replaces the CID (any type, incl. invoice/packing/B/L), re-verifies it; the previous CID stays in `DocumentReplaced`; a B/L replacement updates the title URI |
 | `confirmPickup(id)` | Logistics | phase `Shipped`, custody `AtExporter`, pickup docs present | custody → `PickedUp`; **EXW**: risk→importer. No payment. |
 | `confirmVesselLoading(id, blCid)` | Logistics | phase `Shipped`, custody `PickedUp`, loading docs present | anchors B/L, sets title `tokenURI`, custody → `OnVessel`; **FOB/CIF**: risk→importer. No payment. |
 | `payCustomsDuty(id, amount)` | Exporter (DDP) / Importer | phase ≤ `Delivered`, credit not paid | escrows duty (0 allowed) |
 | `confirmFinalDelivery(id)` | Importer | custody `OnVessel`, delivery docs present | custody → `Delivered`, transfers title; `Settled` if paid |
 | `forceFinalizeDelivery(id)` | Bank | same | same, bypassing a stalling importer |
 | `reclaimExpiredLC(orderId)` | Importer / Bank / admin | past expiry, credit unused (never presented, never honored) | refunds escrow to the **issuing bank** → `Reclaimed`; a shipped-but-unpresented title returns to the exporter |
-| `revokeDocument(id, docType)` | issuer or admin | document exists, verified | clears `verified` (invalid at examination) |
+| `revokeDocument(id, docType)` | issuer or admin | document exists, verified | clears `verified` (invalid at examination) and re-opens the slot for a replacement anchor |
 | `setDocumentRegistry(registry)` | admin or `ROLE_REGISTRY_ADMIN` | bound to this core, matching runtime codehash | swaps the active registry; `DocumentRegistryReplaced` |
 | `setModuleRole(module, role, account, granted)` | admin | module is a core companion | grants/revokes a module role; `ModuleRoleSet` |
 

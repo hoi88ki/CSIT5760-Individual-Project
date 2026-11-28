@@ -203,6 +203,40 @@ describe("Incoterm end-to-end flows", function () {
     expect((await env.core.getShipment(id)).phase).to.equal(Phase.Settled);
   });
 
+  it("deferred credit honored after delivery still pays at maturity", async function () {
+    const env = await loadFixture(fixture);
+    const { shipmentId: id } = await createOrderAndShipment(env, {
+      term: Incoterm.FOB,
+      paymentTerm: PaymentTerm.Deferred,
+      deferredDays: 2n,
+    });
+    await toPresentable(env, id);
+    await present(env, id);
+
+    // Delivery completes while the bank is still examining the presentation.
+    await env.core.connect(env.importer).confirmFinalDelivery(id);
+    expect((await env.core.getShipment(id)).phase).to.equal(Phase.Delivered);
+
+    await honor(env, id);
+    // Honored but unpaid: the trade must stay drawable, not settle on delivery alone.
+    expect((await env.core.getShipment(id)).phase).to.equal(Phase.Honored);
+    expect((await env.core.getLC(id)).paid).to.equal(false);
+
+    await time.increaseTo(Number((await env.core.getLC(id)).maturityAt) + 1);
+    const before = await env.token.balanceOf(env.exporter.address);
+    await env.core.connect(env.outsider).drawDeferredPayment(id);
+    expect(await env.token.balanceOf(env.exporter.address)).to.equal(before + LC);
+    expect((await env.core.getShipment(id)).phase).to.equal(Phase.Settled);
+
+    // A closed trade's documents are final: no revocation or anchoring after settlement.
+    await expect(
+      env.core.connect(env.exporter).revokeDocument(id, DocType.CommercialInvoice)
+    ).to.be.revertedWithCustomError(env.core, "InvalidStateRange");
+    await expect(
+      env.core.connect(env.verifier).anchorDocument(id, DocType.CustomsClearance, CID.clearance)
+    ).to.be.revertedWithCustomError(env.core, "InvalidStateRange");
+  });
+
   it("deferred payment — the duty is forwarded to the treasury when the proceeds are drawn", async function () {
     const env = await loadFixture(fixture);
     const { shipmentId: id } = await createOrderAndShipment(env, {

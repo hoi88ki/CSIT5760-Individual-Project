@@ -33,7 +33,7 @@
 
 | Threat | Failure scenario | Mitigation (code) | Evidence (tests) |
 |--------|------------------|-------------------|------------------|
-| **Documentary fraud** | Honor without a mandatory document; CID replaced after issuance | `ComplianceEngine.requirePresentationCompliant` at presentation **and** re-examined inside `LetterOfCredit.honor`; `DocumentRegistry` anchor-once-then-lock | `Incoterms.e2e`, `DocumentRegistry`, `ComplianceEngine`, `Modules` |
+| **Documentary fraud** | Honor without a mandatory document; CID replaced after issuance | `ComplianceEngine.requirePresentationCompliant` at presentation **and** re-examined inside `LetterOfCredit.honor`; `DocumentRegistry` replacement is role-gated (designated role, original issuer or admin), refused once the trade settles, and every swap is logged with the previous CID (`DocumentReplaced`) | `Incoterms.e2e`, `DocumentRegistry`, `ComplianceEngine`, `Modules` |
 | **Shipping without a credit** | The exporter ships before the bank has issued an operative credit | `createShipment` requires phase `LCIssued` (set only by bank issuance); the named-beneficiary check blocks any other exporter | `Order`, `AccessControl` |
 | **Unauthorized attestation** | Exporter self-signs a certificate | Per-`DocType` role check in `TradeChainCore.anchorDocument` | `DocumentRegistry`, `AccessControl` |
 | **Revoked attestation** | Certificate revoked after being relied upon | `DocumentRegistry.revoke` clears `verified`; presentation requires validity and the bank re-examines before honoring | `DocumentRegistry` revocation tests, `Incoterms.e2e` ("revoked … refuse") |
@@ -61,7 +61,7 @@
 
 ```
 npx hardhat test        # 130 passing
-npx hardhat coverage    # statements 100% · branches 98.76% · functions 100% · lines 100%
+npx hardhat coverage    # statements 100% · branches 96.89% · functions 100% · lines 100%
 ```
 
 Mocks are excluded from the coverage denominator via `.solcover.js`.

@@ -79,7 +79,7 @@ forgery. TradeChain removes the trusted intermediary for the *verification and s
 | 2 | `LetterOfCredit` | module | Documentary-credit state machine: bank issuance & `TradeUSD` escrow prefunding, presentation, examination honor (sight/deferred), deferred draw, duty, expiry reclaim to the bank. |
 | 3 | `ShipmentTracker` | module + ERC-721 | Applications (orders) + trade records — one shared id — with the credit lifecycle `Phase`, goods `Custody`, risk holder and e-B/L title token (`tokenId == trade id`); only the core moves the title. |
 | 4 | `ComplianceEngine` | view module | Incoterm-aware rules: custody-gate masks and the stipulated presentation set; resolves the registry that holds each anchor. |
-| 5 | `DocumentRegistry` | module | Per-`(trade, DocType)` CID anchors, verification status, anchor-once-then-lock; **swappable** by the admin or `ROLE_REGISTRY_ADMIN`. |
+| 5 | `DocumentRegistry` | module | Per-`(trade, DocType)` CID anchors, verification status, live anchors locked and revoked slots re-anchorable; **swappable** by the admin or `ROLE_REGISTRY_ADMIN`. |
 | 6 | `TradeUSD` | ERC-20 | Settlement stablecoin with **role-gated** minting. |
 
 `contracts/libraries/TradeTypes.sol` holds the shared enums/structs (inlined, not deployed).
@@ -137,8 +137,13 @@ modules' writers are administered from this single authority via `TradeChainCore
 | `BillOfLadingOrAWB` | 5 | Logistics | `confirmVesselLoading` |
 | `CustomsClearance` | 6 | Verifier | `anchorDocument` |
 
-Anchors are **anchor-once-then-lock**; a CID can never be replaced. The issuer (or the admin) may
-**revoke** a document, which invalidates it at compliance time.
+Anchors are immutable **except through an authorized replacement**. `replaceDocument(id, docType, cid)`
+replaces the CID of any document — including the invoice, packing list and B/L anchored by a
+milestone — and re-verifies the slot. It is open to the designated role for that `DocType`, the
+original issuer, or the admin, until the trade settles or is reclaimed; every replacement emits
+`DocumentReplaced` with the previous CID, so the change stays auditable. The issuer (or the admin)
+may still **revoke** a document, which invalidates it at compliance time; a revoked document is
+restored by replacing it (or, for the certificate types, by re-anchoring through `anchorDocument`).
 
 ### 3.3.1 Swappable `DocumentRegistry`
 
@@ -293,8 +298,8 @@ Bank       forceFinalizeDelivery(id)                  → if the importer withho
 ```bash
 npm install
 npx hardhat compile
-npx hardhat test                     # 135 passing
-npx hardhat coverage                 # 100 % stmts · 98.76 % branch · 100 % funcs · 100 % lines
+npx hardhat test                     # 143 passing
+npx hardhat coverage                 # 100 % stmts · 96.89 % branch · 100 % funcs · 100 % lines
 npm run gas                          # optional gas report
 ```
 
@@ -394,19 +399,19 @@ upload/retrieve flow.
 
 ## 7. Sepolia Deployment (verified)
 
-Deployed and **source-verified** on **Ethereum Sepolia** (chainId 11155111) on **25 November 2026** —
+Deployed and **source-verified** on **Ethereum Sepolia** (chainId 11155111) on **28 November 2026** —
 all six contracts of the bank-issued documentary-credit suite; record in
 [`deployments/sepolia.json`](./deployments/sepolia.json). Every contract's source is published on
 Etherscan (append `#code` to each address).
 
 | Contract | Address |
 |----------|---------|
-| `TradeChainCore` | [`0x34A657C2b68CCda1b696f03dEf8c0a7a8A8728a6`](https://sepolia.etherscan.io/address/0x34A657C2b68CCda1b696f03dEf8c0a7a8A8728a6#code) |
-| `ShipmentTracker` (e-B/L ERC-721) | [`0xEcA841E1f8aF5C89C823f4A081498A45c9b11818`](https://sepolia.etherscan.io/address/0xEcA841E1f8aF5C89C823f4A081498A45c9b11818#code) |
-| `DocumentRegistry` (swappable) | [`0xb9ca182d1e767704c7852Fe901632a530A1Ca897`](https://sepolia.etherscan.io/address/0xb9ca182d1e767704c7852Fe901632a530A1Ca897#code) |
-| `ComplianceEngine` | [`0xB194FB6344Ed009a4BaCA25626E8882121BC5470`](https://sepolia.etherscan.io/address/0xB194FB6344Ed009a4BaCA25626E8882121BC5470#code) |
-| `LetterOfCredit` | [`0xFaA7C6C17fE1043b9f354d9Bd3bA55e25199919C`](https://sepolia.etherscan.io/address/0xFaA7C6C17fE1043b9f354d9Bd3bA55e25199919C#code) |
-| `TradeUSD` (ERC-20) | [`0x2ecdfB141681C5330f015a2910AefC598209577A`](https://sepolia.etherscan.io/address/0x2ecdfB141681C5330f015a2910AefC598209577A#code) |
+| `TradeChainCore` | [`0x06365Fbcedc05f1e3751D993Ef933F8c931e0651`](https://sepolia.etherscan.io/address/0x06365Fbcedc05f1e3751D993Ef933F8c931e0651#code) |
+| `ShipmentTracker` (e-B/L ERC-721) | [`0x6e274DE9a9489112182388336A1A5995d1862380`](https://sepolia.etherscan.io/address/0x6e274DE9a9489112182388336A1A5995d1862380#code) |
+| `DocumentRegistry` (swappable) | [`0x4aBF86810cE9dc1038e5b86eF81B9738Dd306Ab8`](https://sepolia.etherscan.io/address/0x4aBF86810cE9dc1038e5b86eF81B9738Dd306Ab8#code) |
+| `ComplianceEngine` | [`0xd2b35bFE5BCa88333c3A7Fca923A93a8A2647549`](https://sepolia.etherscan.io/address/0xd2b35bFE5BCa88333c3A7Fca923A93a8A2647549#code) |
+| `LetterOfCredit` | [`0x5944D815389E2202CFae38fcb42c1416ff92d828`](https://sepolia.etherscan.io/address/0x5944D815389E2202CFae38fcb42c1416ff92d828#code) |
+| `TradeUSD` (ERC-20) | [`0xf3B40B08eC1C65953a3C2262CE6d9a6944806C2F`](https://sepolia.etherscan.io/address/0xf3B40B08eC1C65953a3C2262CE6d9a6944806C2F#code) |
 
 Deployer/admin: `0xCE4b0826b1B5d4bEA67EED5212Ae0AA5ec6c8664`. The five operational roles were then
 granted to **distinct wallets** (`scripts/setup-accounts.js`, keys in `.env`):
@@ -443,8 +448,8 @@ npx solhint "contracts/**/*.sol"
 ```
 
 - [ ] `compile` → `Compiled 39 Solidity files successfully`
-- [ ] `test` → `135 passing`
-- [ ] `coverage` → **100 % statements · 98.76 % branch · 100 % functions · 100 % lines** (mocks excluded)
+- [ ] `test` → `143 passing`
+- [ ] `coverage` → **100 % statements · 96.89 % branch · 100 % functions · 100 % lines** (mocks excluded)
 - [ ] `solhint` → no errors
 
 ### B. Local end-to-end demo (all four Incoterms)
@@ -513,7 +518,7 @@ npx hardhat run scripts/smoke.js  --network sepolia
 
 | Risk | Attack / failure scenario | Mitigation | Validation |
 |------|---------------------------|------------|------------|
-| **Documentary fraud** | Honor without a mandatory document; CID replaced after issuance | Presentation compliance-checked, re-examined inside `LetterOfCredit.honor`; `DocumentRegistry` anchor-once-then-lock | Negative tests assert `MissingMandatoryDocument` / `DocumentLocked` |
+| **Documentary fraud** | Honor without a mandatory document; CID replaced after issuance | Presentation compliance-checked, re-examined inside `LetterOfCredit.honor`; a replacement is role-gated (designated role, original issuer or admin), blocked once the trade settles, and logged with the previous CID (`DocumentReplaced`) | Negative tests assert `MissingMandatoryDocument` / `DocumentLocked` / `Unauthorized`; replacement tests assert the old and new CID |
 | **Shipping without a credit** | The exporter ships before the bank has issued an operative credit | `createShipment` requires phase `LCIssued` and the named beneficiary | `Order.test.js`, `AccessControl.test.js` |
 | **Unauthorized attestation** | Exporter self-signs a certificate | Certificates anchor only through the per-`DocType` role check | Access-control matrix test |
 | **Unauthorized honor** | A non-bank (or the beneficiary) honors its own presentation | `honorPresentation` is bank-gated; the module re-checks compliance independently | `AccessControl.test.js`, `Modules.test.js` |
@@ -538,7 +543,7 @@ npx hardhat run scripts/smoke.js  --network sepolia
 | Modules | Internal guards reached directly (issuance/presentation/honor/draw/reclaim ordering, duty forwarding, reclaim window) | `Modules.test.js` |
 | Security | Adversarial settlement token (sight honor and deferred draw); Slither + coverage in CI | Single payout; no High findings |
 
-Current result: **135 tests passing · 100 % statements · 98.76 % branches · 100 % functions ·
+Current result: **143 tests passing · 100 % statements · 96.89 % branches · 100 % functions ·
 100 % lines** (mocks excluded via `.solcover.js`).
 
 ## 11. CI / Static Analysis
@@ -551,8 +556,8 @@ security criteria and its report is retained as a build artifact.
 
 | Phase | Activities | Deliverable | Status |
 |-------|------------|-------------|--------|
-| **Phase 1** | Develop the six contracts + tests | Compiling, tested suite | ✅ done (135 tests) |
-| **Phase 2** | Security review, adversarial tests, coverage | ≥ 90 % branch coverage, Slither report | ✅ done (100 % stmts / 98.76 % branch) |
+| **Phase 1** | Develop the six contracts + tests | Compiling, tested suite | ✅ done (143 tests) |
+| **Phase 2** | Security review, adversarial tests, coverage | ≥ 90 % branch coverage, Slither report | ✅ done (100 % stmts / 96.89 % branch) |
 | **Phase 3** | Sepolia deploy + verify, console, report | Verified contracts, console, report | ✅ done **deploy + verify done · report drafted** (`CSIT5760_Final_Project_Report_21232072.docx`) |
 | **Phase 4** | Bank-issued documentary-credit rework (order → issuance → shipment → presentation → honor) | Reworked contracts, tests, one UI, scripts, docs | ✅ done |
 

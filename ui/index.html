@@ -222,7 +222,7 @@
             <tbody></tbody>
           </table>
         </div>
-        <p class="hint" style="margin-top:8px">★ = stipulated by the credit for this Incoterm — the bank examines this set before honoring. Anchors are one-shot: a CID cannot be replaced, only revoked. Invoice and packing list anchor at shipment; the B/L anchors at vessel loading.</p>
+        <p class="hint" style="margin-top:8px">★ = stipulated by the credit for this Incoterm — the bank examines this set before honoring. An existing document can be replaced by its designated role, the original issuer or the admin; every replacement is logged on-chain with the previous CID, and replacing a revoked document restores it. Invoice and packing list anchor at shipment; the B/L anchors at vessel loading.</p>
       </section>
     </section>
 
@@ -316,7 +316,7 @@ const DOC_ROLE = ["Exporter", "Exporter", "Exporter", "Verifier", "Verifier", "L
 const ANCHORABLE = [2, 3, 4, 6];
 const UNIT = 10n ** 6n;
 const RISK_AT = ["pickup", "vessel loading", "vessel loading", "final delivery"];
-const SEPOLIA = { core: "0x34A657C2b68CCda1b696f03dEf8c0a7a8A8728a6", rpc: "https://ethereum-sepolia-rpc.publicnode.com", id: 11155111n };
+const SEPOLIA = { core: "0x06365Fbcedc05f1e3751D993Ef933F8c931e0651", rpc: "https://ethereum-sepolia-rpc.publicnode.com", id: 11155111n };
 const LOCAL_RPC = "http://127.0.0.1:8545";
 
 const CORE_ABI = [
@@ -337,6 +337,7 @@ const CORE_ABI = [
   "function honorPresentation(uint256 id)",
   "function drawDeferredPayment(uint256 id)",
   "function anchorDocument(uint256 id, uint8 docType, string cid)",
+  "function replaceDocument(uint256 id, uint8 docType, string cid)",
   "function revokeDocument(uint256 id, uint8 docType)",
   "function payCustomsDuty(uint256 id, uint256 amount)",
   "function confirmPickup(uint256 id)",
@@ -833,14 +834,20 @@ function renderDocs() {
     const d = (S.docs && S.docs[i]) || { cid: "", issuer: ethers.ZeroAddress, timestamp: 0, valid: false };
     const stipulated = maskHas(S.mask, i);
     const status = d.valid ? '<span class="pill ok">valid</span>' : d.cid ? '<span class="pill bad">revoked</span>' : '<span class="pill">missing</span>';
+    // Documents can only change while the trade is open: shipped (2) up to delivered (5).
+    const phase = S.s ? Number(S.s.phase) : 0;
+    const open = S.s && phase >= 2 && phase <= 5;
     let actions = "";
     if (S.s) {
-      if (ANCHORABLE.includes(i) && !d.cid) {
-        actions = `<div class="inline"><input class="mono" data-doc-input="${i}" placeholder="CID" /><input type="file" data-upload="doc${i}" /><button class="small" data-act="anchor" data-doc="${i}">Anchor</button></div>`;
-      } else if (d.cid) {
-        actions = `<button class="small" data-act="revoke" data-doc="${i}">Revoke</button>`;
+      if (!open) {
+        actions = `<span class="hint">${phase < 2 ? "after shipment" : "trade closed"}</span>`;
+      } else if (!d.cid) {
+        actions = ANCHORABLE.includes(i)
+          ? `<div class="inline"><input class="mono" data-doc-input="${i}" placeholder="CID" /><input type="file" data-upload="doc${i}" /><button class="small" data-act="anchor" data-doc="${i}">Anchor</button></div>`
+          : `<span class="hint">${i === 5 ? "at vessel loading" : "at shipment"}</span>`;
       } else {
-        actions = `<span class="hint">${i === 5 ? "at vessel loading" : "at shipment"}</span>`;
+        const revokeUi = d.valid ? `<button class="small" data-act="revoke" data-doc="${i}">Revoke</button>` : "";
+        actions = `<div class="inline"><input class="mono" data-replace-input="${i}" placeholder="replacement CID" /><input type="file" data-upload="rep${i}" /><button class="small" data-act="replace" data-doc="${i}">Replace</button>${revokeUi}</div>`;
       }
     }
     const tr = document.createElement("tr");
@@ -1019,7 +1026,16 @@ document.addEventListener("click", async (ev) => {
     case "anchor": {
       const i = btn.dataset.doc;
       const input = document.querySelector(`[data-doc-input="${i}"]`);
-      return send("anchorDocument " + DOCTYPES[i], () => coreAs().anchorDocument(id, Number(i), input.value.trim()));
+      const cid = input ? input.value.trim() : "";
+      if (!cid) { log(`anchorDocument ${DOCTYPES[i]} \u2718 enter or upload a CID`, "bad"); return undefined; }
+      return send("anchorDocument " + DOCTYPES[i], () => coreAs().anchorDocument(id, Number(i), cid));
+    }
+    case "replace": {
+      const i = btn.dataset.doc;
+      const input = document.querySelector(`[data-replace-input="${i}"]`);
+      const cid = input ? input.value.trim() : "";
+      if (!cid) { log(`replaceDocument ${DOCTYPES[i]} \u2718 enter or upload a CID`, "bad"); return undefined; }
+      return send("replaceDocument " + DOCTYPES[i], () => coreAs().replaceDocument(id, Number(i), cid));
     }
     case "revoke":
       return send("revokeDocument " + DOCTYPES[btn.dataset.doc], () => coreAs().revokeDocument(id, Number(btn.dataset.doc)));
@@ -1042,7 +1058,10 @@ document.addEventListener("change", async (ev) => {
   try {
     log(`ipfs add ${file.name} …`);
     const cid = await ipfsAdd(file);
-    const input = document.getElementById(target) || document.querySelector(`[data-doc-input="${target.replace("doc", "")}"]`);
+    const slot = target.replace(/^(doc|rep)/, "");
+    const input = document.getElementById(target) ||
+      document.querySelector(`[data-doc-input="${slot}"]`) ||
+      document.querySelector(`[data-replace-input="${slot}"]`);
     if (input) input.value = cid;
     if (Object.prototype.hasOwnProperty.call(S.draft, target)) S.draft[target] = cid;
     $("uploadOut").textContent = `${file.name} → ${cid}`;

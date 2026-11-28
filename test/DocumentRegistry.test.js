@@ -43,13 +43,26 @@ describe("DocumentRegistry — anchoring & verification", function () {
     expect(await env.core.hasValidDocument(id, DocType.InspectionCertificate)).to.equal(true);
   });
 
-  it("is anchor-once-then-lock (duplicate anchoring reverts)", async function () {
+  it("locks a live anchor and re-anchors a revoked one", async function () {
     const env = await deployTradeChain();
     const id = await shipped(env);
     await env.core.connect(env.verifier).anchorDocument(id, DocType.InspectionCertificate, CID.inspection);
     await expect(
       env.core.connect(env.verifier).anchorDocument(id, DocType.InspectionCertificate, CID.extra)
     ).to.be.revertedWithCustomError(env.registry, "DocumentLocked");
+
+    // Revoking re-opens the slot: the issuer may anchor a replacement CID.
+    await env.core.connect(env.verifier).revokeDocument(id, DocType.InspectionCertificate);
+    await expect(
+      env.core.connect(env.verifier).anchorDocument(id, DocType.InspectionCertificate, CID.extra)
+    )
+      .to.emit(env.registry, "DocumentAnchored")
+      .withArgs(id, DocType.InspectionCertificate, env.verifier.address, CID.extra);
+
+    const rec = await env.core.getDocument(id, DocType.InspectionCertificate);
+    expect(rec.cid).to.equal(CID.extra);
+    expect(rec.verified).to.equal(true);
+    expect(await env.core.hasValidDocument(id, DocType.InspectionCertificate)).to.equal(true);
   });
 
   it("rejects empty CIDs", async function () {
@@ -96,6 +109,88 @@ describe("DocumentRegistry — anchoring & verification", function () {
     await expect(
       env.core.connect(env.verifier).anchorDocument(1n, DocType.InspectionCertificate, CID.inspection)
     ).to.be.revertedWithCustomError(env.core, "InvalidStateRange");
+  });
+
+  describe("document replacement", function () {
+    it("lets the designated role replace an existing document", async function () {
+      const env = await deployTradeChain();
+      const id = await shipped(env);
+
+      await expect(env.core.connect(env.exporter).replaceDocument(id, DocType.CommercialInvoice, CID.extra))
+        .to.emit(env.registry, "DocumentReplaced")
+        .withArgs(id, DocType.CommercialInvoice, env.exporter.address, CID.invoice, CID.extra);
+
+      const rec = await env.core.getDocument(id, DocType.CommercialInvoice);
+      expect(rec.cid).to.equal(CID.extra);
+      expect(rec.verified).to.equal(true);
+    });
+
+    it("rejects an unauthorized account and an unknown document", async function () {
+      const env = await deployTradeChain();
+      const id = await shipped(env);
+
+      await expect(
+        env.core.connect(env.outsider).replaceDocument(id, DocType.CommercialInvoice, CID.extra)
+      ).to.be.revertedWithCustomError(env.core, "Unauthorized");
+      // Nothing anchored for the B/L yet: the registry reports the missing document.
+      await expect(
+        env.core.connect(env.logistics).replaceDocument(id, DocType.BillOfLadingOrAWB, CID.bl)
+      ).to.be.revertedWithCustomError(env.registry, "DocumentNotFound");
+    });
+
+    it("restores a revoked certificate so the custody gate passes", async function () {
+      const env = await deployTradeChain();
+      const id = await shipped(env); // FOB
+
+      await env.core.connect(env.verifier).anchorDocument(id, DocType.InspectionCertificate, CID.inspection);
+      await env.core.connect(env.verifier).revokeDocument(id, DocType.InspectionCertificate);
+      await env.core.connect(env.logistics).confirmPickup(id);
+      await expect(
+        env.core.connect(env.logistics).confirmVesselLoading(id, CID.bl)
+      ).to.be.revertedWithCustomError(env.compliance, "MissingMandatoryDocument");
+
+      await env.core.connect(env.verifier).replaceDocument(id, DocType.InspectionCertificate, CID.extra);
+      await env.core.connect(env.logistics).confirmVesselLoading(id, CID.bl);
+      expect((await env.core.getShipment(id)).custody).to.equal(2n); // OnVessel
+    });
+
+    it("lets the original issuer replace a document after its role was revoked", async function () {
+      const env = await deployTradeChain();
+      const id = await shipped(env);
+
+      await env.core.connect(env.verifier).anchorDocument(id, DocType.InsuranceCertificate, CID.insurance);
+      await env.core
+        .connect(env.admin)
+        .revokeRole(await env.core.ROLE_VERIFIER(), env.verifier.address);
+
+      await env.core.connect(env.verifier).replaceDocument(id, DocType.InsuranceCertificate, CID.extra);
+      expect((await env.core.getDocument(id, DocType.InsuranceCertificate)).cid).to.equal(CID.extra);
+    });
+
+    it("updates the e-B/L title URI when the bill of lading is replaced", async function () {
+      const env = await deployTradeChain();
+      const id = await shipped(env); // FOB
+
+      await env.core.connect(env.verifier).anchorDocument(id, DocType.InspectionCertificate, CID.inspection);
+      await env.core.connect(env.logistics).confirmPickup(id);
+      await env.core.connect(env.logistics).confirmVesselLoading(id, CID.bl);
+      expect(await env.tracker.tokenURI(id)).to.equal("ipfs://" + CID.bl);
+
+      await env.core.connect(env.logistics).replaceDocument(id, DocType.BillOfLadingOrAWB, CID.extra);
+      expect(await env.tracker.tokenURI(id)).to.equal("ipfs://" + CID.extra);
+    });
+
+    it("refuses replacement once the trade is reclaimed", async function () {
+      const env = await deployTradeChain();
+      const { orderId } = await createOrderAndShipment(env, { term: Incoterm.FOB });
+      const { deadline } = await env.core.getShipment(orderId);
+      await time.increaseTo(Number(deadline) + 1);
+      await env.core.connect(env.importer).reclaimExpiredLC(orderId);
+
+      await expect(
+        env.core.connect(env.exporter).replaceDocument(orderId, DocType.CommercialInvoice, CID.extra)
+      ).to.be.revertedWithCustomError(env.core, "InvalidStateRange");
+    });
   });
 
   describe("revocation", function () {

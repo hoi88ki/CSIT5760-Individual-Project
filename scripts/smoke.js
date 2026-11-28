@@ -8,7 +8,7 @@ const { ethers, network } = require("hardhat");
 
 const Incoterm = { EXW: 0, FOB: 1 };
 const PaymentTerm = { Sight: 0, Deferred: 1 };
-const DocType = { InspectionCertificate: 3 };
+const DocType = { CommercialInvoice: 0, InspectionCertificate: 3, BillOfLadingOrAWB: 5 };
 const Phase = ["OrderPlaced", "LCIssued", "Shipped", "Presented", "Honored", "Delivered", "Settled", "Reclaimed"];
 const UNIT = 10n ** 6n;
 const CID = {
@@ -16,6 +16,8 @@ const CID = {
   packing: "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
   bl: "bafybeibzl6c7tfi3m3xh5s7a6b2m4p6kzp7c4q4y2o7b6k5r4v3l5r5v7v3l5",
   inspection: "bafybeih2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2g3h4i5j6k7l",
+  invoice2: "bafybeidq3z4m5n6o7p8q9r0s1t2u3v4w5x6y7z8a9b0c1d2e3f4g5h6i7j",
+  bl2: "bafybeicx2w3e4r5t6y7u8i9o0p1a2s3d4f5g6h7j8k9l0z1x2c3v4b5n6m",
 };
 
 async function main() {
@@ -59,6 +61,18 @@ async function main() {
   await (await core.connect(me).confirmPickup(orderId)).wait();
   await (await core.connect(me).confirmVesselLoading(orderId, CID.bl)).wait();
   console.log(`custody=${Number((await core.getShipment(orderId)).custody)} (2=OnVessel), no payment at milestones: paid=${(await core.getLC(orderId)).paid}`);
+
+  // 4b) document replacement: revoke the certificate, then replace it (and the B/L) with a
+  //     fresh CID — both must restore validity, and the B/L must re-point the title URI.
+  await (await core.connect(me).revokeDocument(orderId, DocType.InspectionCertificate)).wait();
+  if ((await core.examinePresentation(orderId))[0]) throw new Error("revoked document still complies");
+  await (await core.connect(me).replaceDocument(orderId, DocType.InspectionCertificate, CID.inspection)).wait();
+  await (await core.connect(me).replaceDocument(orderId, DocType.CommercialInvoice, CID.invoice2)).wait();
+  await (await core.connect(me).replaceDocument(orderId, DocType.BillOfLadingOrAWB, CID.bl2)).wait();
+  console.log(
+    `replacement OK: invoice=${(await core.getDocument(orderId, DocType.CommercialInvoice)).cid.slice(0, 12)}…, ` +
+      `B/L tokenURI=${await nft.tokenURI(orderId)}`
+  );
 
   // 5) presentation + examination/honor (sight)
   await (await core.connect(me).presentDocuments(orderId)).wait();

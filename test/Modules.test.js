@@ -263,6 +263,39 @@ describe("Companion contract internals", function () {
         registry,
         "AlreadyRevoked"
       );
+
+      // A revoked slot is re-opened for a replacement anchor; the live anchor stays locked.
+      await registry.anchor(1n, DocType.CommercialInvoice, CID.extra, exporter.address);
+      expect((await registry.getDocument(1n, DocType.CommercialInvoice)).cid).to.equal(CID.extra);
+      expect(await registry.isValid(1n, DocType.CommercialInvoice)).to.equal(true);
+    });
+
+    it("replaces an existing anchor (valid or revoked) and re-verifies it", async function () {
+      const registry = await deploy();
+      await registry.anchor(1n, DocType.CommercialInvoice, CID.invoice, exporter.address);
+
+      await expect(registry.replace(1n, DocType.PackingList, CID.packing, exporter.address)).to.be.revertedWithCustomError(
+        registry,
+        "DocumentNotFound"
+      );
+      await expect(
+        registry.replace(1n, DocType.CommercialInvoice, "", exporter.address)
+      ).to.be.revertedWithCustomError(registry, "EmptyCID");
+      await expect(
+        registry.connect(outsider).replace(1n, DocType.CommercialInvoice, CID.extra, outsider.address)
+      ).to.be.revertedWithCustomError(registry, "AccessControlUnauthorizedAccount");
+
+      // A live anchor may be replaced; the old CID is reported in the event.
+      await expect(registry.replace(1n, DocType.CommercialInvoice, CID.extra, exporter.address))
+        .to.emit(registry, "DocumentReplaced")
+        .withArgs(1n, DocType.CommercialInvoice, exporter.address, CID.invoice, CID.extra);
+      expect((await registry.getDocument(1n, DocType.CommercialInvoice)).cid).to.equal(CID.extra);
+
+      // And so may a revoked one: the replacement re-verifies the slot.
+      await registry.revoke(1n, DocType.CommercialInvoice);
+      await registry.replace(1n, DocType.CommercialInvoice, CID.invoice, importer.address);
+      expect(await registry.isValid(1n, DocType.CommercialInvoice)).to.equal(true);
+      expect((await registry.getDocument(1n, DocType.CommercialInvoice)).issuer).to.equal(importer.address);
     });
   });
 
