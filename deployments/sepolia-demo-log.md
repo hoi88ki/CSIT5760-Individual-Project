@@ -2,9 +2,9 @@
 # Multi-account workflow demo — TradeChain on sepolia
 
 
-Date: 2026-11-25T17:55:10.067Z
+Date: 2026-11-28T12:23:00.808Z
 
-Core: `0x34A657C2b68CCda1b696f03dEf8c0a7a8A8728a6` · LetterOfCredit: `0xFaA7C6C17fE1043b9f354d9Bd3bA55e25199919C` · ShipmentTracker (e-B/L): `0xEcA841E1f8aF5C89C823f4A081498A45c9b11818`
+Core: `0x06365Fbcedc05f1e3751D993Ef933F8c931e0651` · LetterOfCredit: `0x5944D815389E2202CFae38fcb42c1416ff92d828` · ShipmentTracker (e-B/L): `0x6e274DE9a9489112182388336A1A5995d1862380`
 
 | Party | Role | Address |
 |---|---|---|
@@ -23,36 +23,36 @@ Every transaction below is signed by the party's own key (see the Etherscan link
 
 ## 1 · Application (importer)
 
-| Importer | `ROLE_IMPORTER` | `createOrder(exporter=0x6e5c0C76…, FOB, 25000.0 tUSD, sight)` | [0x8accd2d3…](https://sepolia.etherscan.io/tx/0x8accd2d3439ab55284bda580707685f4bb7ae70c5bb1be5830c6937f815579e2) | 12211110 | 1365058 | 7.722365724917454212 |
-| | | ↳ order #2 names the exporter as beneficiary | | | | |
+| Importer | `ROLE_IMPORTER` | `createOrder(exporter=0x6e5c0C76…, FOB, 25000.0 tUSD, sight)` | [0x32365c33…](https://sepolia.etherscan.io/tx/0x32365c334f83f40b6c07aeb9dee82cfb476f368e4d137a3599b3341bd62929a2) | 12230015 | 1364800 | 7.713863834763298304 |
+| | | ↳ order #7 names the exporter as beneficiary | | | | |
 | | | ↳ phase OrderPlaced — nothing funded yet | | | | |
 
 ## 2 · Issuance (issuing bank — funds the escrow)
 
-| Bank | `ROLE_BANK` | `issueLetterOfCredit(order #2 — 25000.0 tUSD from the BANK)` | [0x380d50b1…](https://sepolia.etherscan.io/tx/0x380d50b1c7385b2d7b0f2ca1b94a70fe798d2dbe4e056e14c538ba5b606b00ab) | 12211111 | 749380 | 0.09999999994524262 |
+| Bank | `ROLE_BANK` | `issueLetterOfCredit(order #7 — 25000.0 tUSD from the BANK)` | [0x089abdf9…](https://sepolia.etherscan.io/tx/0x089abdf990f1eea517cf0f530be7a56b895921d2511fcaf6def04bdde3e7fbee) | 12230017 | 648970 | 1.093372856844532591 |
 | | | ↳ credit recorded with the bank as issuer | | | | |
 | | | ↳ beneficiary = exporter, stipulated docs bitmask 43 | | | | |
-| | | ↳ escrow funded BY THE BANK: 25000.0 tUSD in the module | | | | |
+| | | ↳ escrow funded BY THE BANK: +25000.0 tUSD (module total 25201.0) | | | | |
 | | | ↳ phase LCIssued — the exporter may now ship | | | | |
 
 ## 3 · Shipment (exporter — only now allowed to ship)
 
-| Exporter | `ROLE_EXPORTER` | `createShipment(invoice + packing-list CIDs anchored, title minted to the core escrow)` | [0x7d589609…](https://sepolia.etherscan.io/tx/0x7d5896091d05b1c2e21427fece2b1cf4cb83f28b6b6fc0d2b332276fd28491c4) | 12211112 | 1323902 | 0.09999999992049522 |
+| Exporter | `ROLE_EXPORTER` | `createShipment(invoice + packing-list CIDs anchored, title minted to the core escrow)` | [0xa9aba46a…](https://sepolia.etherscan.io/tx/0xa9aba46a029b9732be24df67ebe469e13c4520d0b4f0ba059825a48f2fc1b231) | 12230018 | 1419818 | 1.093434879316137807 |
 | | | ↳ phase Shipped | | | | |
 | | | ↳ e-B/L title token escrowed by the core | | | | |
 
 ## 4 · Verifier attestation
 
-| Verifier | `ROLE_VERIFIER` | `anchorDocument(InspectionCertificate (part of the FOB stipulated set))` | [0xfac92fc6…](https://sepolia.etherscan.io/tx/0xfac92fc67632741c9dd210693e93a8cc22c4643591e0ffc61e44aba9de8afd4d) | 12211113 | 606602 | 0.099999999969065918 |
+| Verifier | `ROLE_VERIFIER` | `anchorDocument(InspectionCertificate (part of the FOB stipulated set))` | [0x7e2fe674…](https://sepolia.etherscan.io/tx/0x7e2fe674228548c2321d21af037121d66d48071d2fe477ac69c189e71ac07c7e) | 12230019 | 606077 | 0.09564569641925882 |
 | | | ↳ inspection certificate anchored & verified | | | | |
 
 ## 5 · Custody (logistics) — risk moves, payment does NOT
 
-| Logistics | `ROLE_LOGISTICS` | `confirmPickup(custody PickedUp; FOB risk still with the exporter)` | [0x204d26e8…](https://sepolia.etherscan.io/tx/0x204d26e8e69fb80474b85fa462e6912a252c36873e1e479e09e39703ee553ebe) | 12211114 | 82171 | 0.09999999995691952 |
+| Logistics | `ROLE_LOGISTICS` | `confirmPickup(custody PickedUp; FOB risk still with the exporter)` | [0xddab4fdc…](https://sepolia.etherscan.io/tx/0xddab4fdc46491d96956d3a6afe0a2f33d96418d782f150de3d12bb1f5280be6b) | 12230020 | 81682 | 1.093125639369758518 |
 | | | ↳ custody PickedUp | | | | |
 | | | ↳ FOB: risk still with the exporter | | | | |
 | | | ↳ no payment at the milestone (the credit pays on honor) | | | | |
-| Logistics | `ROLE_LOGISTICS` | `confirmVesselLoading(B/L anchored + title URI set; FOB risk transfers to the importer)` | [0x31b017e9…](https://sepolia.etherscan.io/tx/0x31b017e9daa165ba68cc229ba3a2a23aa88ee6194a8aa5ec689f9e7a60b091a6) | 12211115 | 1115358 | 0.09999999994018915 |
+| Logistics | `ROLE_LOGISTICS` | `confirmVesselLoading(B/L anchored + title URI set; FOB risk transfers to the importer)` | [0xf54b07c1…](https://sepolia.etherscan.io/tx/0xf54b07c1ed8f19304e1d6de3be090f20789d6512625c07ec6c89c06cdab52166) | 12230021 | 1115332 | 1.093125639355259202 |
 | | | ↳ custody OnVessel | | | | |
 | | | ↳ FOB: risk now with the importer | | | | |
 | | | ↳ title tokenURI = ipfs://<B/L CID> | | | | |
@@ -60,27 +60,27 @@ Every transaction below is signed by the party's own key (see the Etherscan link
 
 ## 6 · Presentation (exporter/beneficiary)
 
-| Exporter | `ROLE_EXPORTER` | `presentDocuments(stipulated set complete → presentation recorded)` | [0x44eb7017…](https://sepolia.etherscan.io/tx/0x44eb7017d3e0724ed30f61c6ccb9c03684068adbb07c3ad2a5c979173407ab8b) | 12211117 | 121401 | 0.099999999918674205 |
+| Exporter | `ROLE_EXPORTER` | `presentDocuments(stipulated set complete → presentation recorded)` | [0x617f2a82…](https://sepolia.etherscan.io/tx/0x617f2a8237efc44bd7912bc800075c720e83f8a49b17fd31cb565707619e2410) | 12230022 | 121581 | 1.093434879314557254 |
 | | | ↳ phase Presented | | | | |
 | | | ↳ examination preview: presentation set complete — the bank may honor | | | | |
 
 ## 7 · Examination & honor (issuing bank — sight: pays now)
 
-| Bank | `ROLE_BANK` | `honorPresentation(examines the presentation on-chain and honors — 25000.0 tUSD to the beneficiary)` | [0x1cbdc43d…](https://sepolia.etherscan.io/tx/0x1cbdc43d8007c962c1f60c654da201b67ad4286cc06948b4ad612ddf61310cf5) | 12211118 | 267802 | 0.09999999994122559 |
+| Bank | `ROLE_BANK` | `honorPresentation(examines the presentation on-chain and honors — 25000.0 tUSD to the beneficiary)` | [0xdce1e48c…](https://sepolia.etherscan.io/tx/0xdce1e48cdc792f4b19d978f2f47d28f84f4c91cb1d2f75375328a97abec17636) | 12230023 | 276499 | 1.093372856840938104 |
 | | | ↳ credit honored and paid (sight) | | | | |
 | | | ↳ exporter balance +25000.0 tUSD | | | | |
-| | | ↳ escrow emptied | | | | |
+| | | ↳ escrow debited by the payout (module total 201.0) | | | | |
 
 ## 8 · Reimbursement (importer settles the credit with the issuing bank, on-chain)
 
-| Importer | `ROLE_IMPORTER` | `reimburseIssuingBank(settles the credit on-chain — 25000.0 tUSD from the importer to the issuing bank)` | [0xf6848cf6…](https://sepolia.etherscan.io/tx/0xf6848cf6681d0fe2f5e4c3e697434e0662d84649f196d5e7699bfdbd7f0a150e) | 12211120 | 109437 | 7.722365724915812657 |
+| Importer | `ROLE_IMPORTER` | `reimburseIssuingBank(settles the credit on-chain — 25000.0 tUSD from the importer to the issuing bank)` | [0x3653c362…](https://sepolia.etherscan.io/tx/0x3653c36279fc465cf16000021bd2a8ca9958c4ad6af0a1600837c9bf418e2cd2) | 12230024 | 105570 | 7.713863834761925894 |
 | | | ↳ credit recorded as reimbursed | | | | |
 | | | ↳ bank balance +25000.0 tUSD (reimbursed) | | | | |
 | | | ↳ importer balance reduced by the credit amount | | | | |
 
 ## 9 · Final delivery (importer) — title released, trade Settled
 
-| Importer | `ROLE_IMPORTER` | `confirmFinalDelivery(custody Delivered, e-B/L title released to the importer)` | [0xb6b2e1db…](https://sepolia.etherscan.io/tx/0xb6b2e1dbdae3a4a57bb1c9d2c2281c3b55912f91823d534c4383cf5a0e6791eb) | 12211121 | 258048 | 7.722365724911941937 |
+| Importer | `ROLE_IMPORTER` | `confirmFinalDelivery(custody Delivered, e-B/L title released to the importer)` | [0x811c3088…](https://sepolia.etherscan.io/tx/0x811c30885f75ad9d8b039a1fcd65c8b44a3bf7741bee09ba06f04c587549f218) | 12230025 | 146617 | 7.713863834760019873 |
 | | | ↳ custody Delivered | | | | |
 | | | ↳ phase Settled (paid AND delivered) | | | | |
 | | | ↳ e-B/L title now owned by the importer | | | | |
@@ -88,13 +88,13 @@ Every transaction below is signed by the party's own key (see the Etherscan link
 ## Result
 
 
-Trade #2: phase **Settled**, custody **Delivered**, credit paid **true**, reimbursed **true**, title with the **importer**.
+Trade #7: phase **Settled**, custody **Delivered**, credit paid **true**, reimbursed **true**, title with the **importer**.
 
 | Party | Final ETH (gas paid from these accounts) | Final tUSD |
 |---|---|---|
-| Importer | 7.722365724911941937 | 985000.0 |
-| Exporter | 0.099999999918674205 | 60000.0 |
-| Bank | 0.09999999994122559 | 975000.0 |
-| Logistics | 0.09999999994018915 | — |
-| Verifier | 0.099999999969065918 | — |
+| Importer | 7.713863834760019873 | 949900.0 |
+| Exporter | 1.093434879314557254 | 60000.0 |
+| Bank | 1.093372856840938104 | 999799.0 |
+| Logistics | 1.093125639355259202 | — |
+| Verifier | 0.09564569641925882 | — |
 

@@ -122,6 +122,7 @@ async function main() {
       () => token.connect(bank).approve(dep.core, ethers.MaxUint256),
       async () => [[(await token.allowance(bank.address, dep.core)) >= LC_AMOUNT, "escrow allowance in place"]]);
   }
+  const escrowBefore = await token.balanceOf(dep.letterOfCredit);
   await step("Bank", "ROLE_BANK", "issueLetterOfCredit",
     `order #${orderId} — ${ethers.formatUnits(LC_AMOUNT, 6)} tUSD from the BANK`,
     bank,
@@ -132,7 +133,7 @@ async function main() {
       return [
         [lc.issued && lc.issuingBank.toLowerCase() === bank.address.toLowerCase(), "credit recorded with the bank as issuer"],
         [lc.beneficiary.toLowerCase() === exporter.address.toLowerCase(), `beneficiary = exporter, stipulated docs bitmask ${lc.requiredDocs}`],
-        [escrow === LC_AMOUNT, `escrow funded BY THE BANK: ${ethers.formatUnits(escrow, 6)} tUSD in the module`],
+        [escrow - escrowBefore === LC_AMOUNT, `escrow funded BY THE BANK: +${ethers.formatUnits(escrow - escrowBefore, 6)} tUSD (module total ${ethers.formatUnits(escrow, 6)})`],
         [Number((await core.getShipment(orderId)).phase) === 1, "phase LCIssued — the exporter may now ship"],
       ];
     });
@@ -206,6 +207,7 @@ async function main() {
   // ---------------------------------------------------------------- 7) honor
   heading("## 7 · Examination & honor (issuing bank — sight: pays now)");
   const exporterBefore = await token.balanceOf(exporter.address);
+  const escrowBeforeHonor = await token.balanceOf(dep.letterOfCredit);
   await step("Bank", "ROLE_BANK", "honorPresentation",
     `examines the presentation on-chain and honors — ${ethers.formatUnits(LC_AMOUNT, 6)} tUSD to the beneficiary`,
     bank,
@@ -216,7 +218,7 @@ async function main() {
       return [
         [lc.honored && lc.paid, "credit honored and paid (sight)"],
         [exporterAfter === exporterBefore + LC_AMOUNT, `exporter balance +${ethers.formatUnits(LC_AMOUNT, 6)} tUSD`],
-        [(await token.balanceOf(dep.letterOfCredit)) === 0n, "escrow emptied"],
+        [(await token.balanceOf(dep.letterOfCredit)) === escrowBeforeHonor - LC_AMOUNT, `escrow debited by the payout (module total ${ethers.formatUnits(await token.balanceOf(dep.letterOfCredit), 6)})`],
       ];
     });
 
