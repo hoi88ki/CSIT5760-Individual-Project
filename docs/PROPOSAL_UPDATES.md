@@ -12,14 +12,19 @@ Legend: **[§n]** = proposal section number · **→** = suggested wording.
 
 The proposal is the project scope/reference, but the code is authoritative for runtime behavior:
 
-- **Title versus settlement:** the proposal describes e-B/L transfer at the settlement milestone. The
-  implementation currently transfers the ERC-721 title to the importer only in final delivery
-  (`confirmFinalDelivery` or bank `forceFinalizeDelivery`). EXW/FOB/CIF L/C payout and risk transfer
-  can happen earlier; the title remains in core escrow until delivery. This is documented in the
-  README and architecture notes; the contract was not changed as part of this documentation/UI task.
-- **Bank review:** there is no separate bank approval/document-examination function. Compliance is
-  checked on-chain against the required document set; the bank role can force-finalize a shipment
-  after the objective delivery conditions are met.
+- **Title versus payment:** the proposal describes e-B/L transfer at the settlement milestone. The
+  implementation releases the ERC-721 title to the importer at final delivery
+  (`confirmFinalDelivery` or bank `forceFinalizeDelivery`). **Payment follows the credit, not the
+  milestones**: the bank honors a complying presentation (sight, or deferred at maturity), while
+  risk transfer follows the Incoterm milestones and the title remains in core escrow until
+  delivery. Documented in the README and architecture notes.
+- **Bank review:** the issuing bank's document examination **is** on-chain:
+  `presentDocuments` records the beneficiary's presentation, and `honorPresentation` (bank-only)
+  re-examines the stipulated document set before honoring — at sight, or after the agreed deferral
+  (`drawDeferredPayment`). The bank role can still force-finalize a stalled delivery.
+- **Documents are correctable:** a live anchor is locked, but `replaceDocument` (designated role,
+  original issuer or admin) swaps any document's CID while the trade is open, with the previous CID
+  kept in the `DocumentReplaced` event; a revoked slot can be re-anchored. Closed trades are final.
 - **Proposal objective status:** the title-transfer wording in OBJ-1 should be read alongside the
   implementation clarification above. No claim is made here that the proposal PDF itself was edited.
 
@@ -53,10 +58,15 @@ Also add a phrase to §5 `DocumentRegistry.sol`: "per `DocType`, records the CID
 **Change to:** treat the six as the *universe*; the **mandatory set is a function of the Incoterm and the milestone**:
 > "The seven document types form the universe; the set that must be present before a milestone/payout is derived from the Incoterm and the phase — e.g. **CIF** additionally requires the Insurance Certificate, **FOB** requires the B/L and an inspection certificate, **EXW** requires neither insurance nor an inspection certificate, and **DDP** requires the Certificate of Origin and Customs Clearance (plus duty paid)."
 
-### A.5 — Letter-of-Credit realism  *(fix)*
+### A.5 — Letter-of-Credit realism  *(fix — superseded by the credit rework)*
 **Where:** §4 bullet **"Letter of Credit Management"**; §5 row **`LetterOfCredit.sol`**.
 **Change to:** state who does what:
 > "The **importer** funds the L/C escrow in `TradeUSD`; the contract checks the required documents and shipment conditions, while the **bank** role may **force-finalize** a stalled delivery once objective conditions are met. Settlement is a single atomic payout to the exporter at the Incoterm risk-transfer milestone, and the escrow is refunded to the importer if the exporter never ships before the deadline."
+
+> **Superseded by the bank-issued credit rework (Nov 2026):** the implementation now has the
+> **issuing bank** fund the escrow at issuance, the exporter present documents, the bank examine
+> and honor (sight or deferred), the importer reimburse the bank on-chain, and expired unused
+> credits return to the bank — see the README workflow and `docs/DESIGN_DECISIONS.md` D22–D30.
 
 ### A.6 — `TradeUSD` open minting  *(fix)*
 **Where:** §5 row **`TradeUSD.sol`**.

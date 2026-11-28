@@ -31,7 +31,9 @@ follow the Incoterm independently of payment; expired, unused credits return to 
 each own an `AccessControl` whose admin is the core, so the core can mint `TradeUSD` (role-gated),
 mint/transfer the title token and write document anchors. The
 ERC-721 `transferFrom`/`safeTransferFrom` surface is blocked in `ShipmentTracker._update`; only the
-core's `transferTitle` (called during final delivery) can move the title. Payout/risk transfer may happen earlier for EXW/FOB/CIF; title release is a separate final-delivery action. No proxies, no upgradeable patterns.
+core's `transferTitle` (called during final delivery) can move the title. Payment follows the
+credit (presentation → examination → honor), risk transfer follows the Incoterm milestones, and
+title release is a separate final-delivery action. No proxies, no upgradeable patterns.
 
 ### 1.1 Swappable DocumentRegistry
 
@@ -77,7 +79,7 @@ the id is also the `ShipmentTracker` token id. The credit lifecycle lives on the
 | `issueLetterOfCredit(orderId)` | **Issuing bank** | phase `OrderPlaced`, deadline ahead, bank has a token allowance | pulls `lcAmount` from the **bank** into escrow, records beneficiary + documentary terms → `LCIssued` (operative) |
 | `createShipment(orderId, invoiceCID, packingCID)` | **named** Exporter | phase `LCIssued`, before expiry | anchors invoice + packing list, mints the title to the core → `Shipped` |
 | `presentDocuments(id)` | Exporter | phase `Shipped`, before expiry, stipulated set complete & verified | records the presentation → `Presented` |
-| `honorPresentation(id)` | **Bank** | presented, stipulated set still valid on-chain, (DDP) duty paid | examines; sight: pays now; deferred: schedules `maturityAt` → `Honored` |
+| `honorPresentation(id)` | **Bank** | presented, stipulated set still valid on-chain, (DDP) duty paid | examines; sight: pays now; deferred: schedules `maturityAt` → `Honored`. A deferred credit honored after delivery stays `Honored` (not `Settled`) until `drawDeferredPayment` releases the proceeds |
 | `drawDeferredPayment(id)` | anyone after maturity | honored, not paid, `block.timestamp ≥ maturityAt` | releases the proceeds → `Settled` if delivered |
 | `reimburseIssuingBank(orderId)` | Importer (the trade's applicant) | credit `paid` (proceeds released), not already reimbursed | pulls `lc.amount` TradeUSD from the importer **to the issuing bank** on-chain; `LC.reimbursed = true` |
 | `anchorDocument(id, docType, cid)` | per-DocType role | phase ≥ `Shipped`, anchorable type, slot missing or revoked | anchors verified; a live anchor is locked, a revoked slot is re-anchored |
@@ -111,6 +113,15 @@ revoked). `ComplianceEngine` exposes two kinds of checks:
   requirement per Incoterm. `firstMissingPresentation` returns the first gap and backs the core's
   `examinePresentation` preview and the bank's honor-time examination.
 
+**Anchor lifecycle.** A **live** anchor is immutable — anchoring over it reverts
+(`DocumentLocked`). A **revoked** slot is re-opened: `anchor` accepts a replacement CID for it.
+Any existing anchor (valid or revoked) can also be **replaced** through
+`TradeChainCore.replaceDocument(id, docType, cid)` — open to the designated role for the
+`DocType`, the original issuer, or the admin, and only while the trade is open (`_requireActive`).
+`DocumentRegistry.replace` re-verifies the slot and emits `DocumentReplaced` with the previous
+CID, so corrections stay auditable; replacing the B/L also updates the title `tokenURI`. A
+settled or reclaimed trade is final: anchoring, replacement and revocation all revert.
+
 Because the active registry is swappable, the engine resolves the registry that holds each anchor
 through the core (`documentRegistryOf`) and falls back to the deployment-time registry, so a
 registry swap never changes the validity of documents that are already anchored.
@@ -124,9 +135,12 @@ registry swap never changes the validity of documents that are already anchored.
    after the core has pulled the tokens from the bank.
 2. `honor(id, beneficiary)` re-examines the presentation on-chain (stipulated set valid, DDP duty
    paid), then either pays at sight or schedules `maturityAt`. Strict
-   checks-effects-interactions + `nonReentrant`.
+   checks-effects-interactions + `nonReentrant`. The trade phase settles **only when the proceeds
+   are released**: a deferred credit honored after delivery stays `Honored` until the draw pays it
+   (marking it `Settled` early would make `drawDeferredPayment` unreachable and strand the escrow).
 3. `drawDeferred(id, beneficiary)` releases the proceeds at maturity (the core exposes it
-   permissionlessly — a stalled bank cannot withhold a deterministic undertaking).
+   permissionlessly — a stalled bank cannot withhold a deterministic undertaking) and settles the
+   trade if custody is already delivered.
 4. `reimburse(id)` settles the applicant's debt on-chain: once the proceeds are released, the
    credit pulls `amount` TradeUSD from the importer straight to the issuing bank and records
    `reimbursed` (the bank is out of pocket only between release and reimbursement).

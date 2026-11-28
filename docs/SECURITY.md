@@ -7,8 +7,12 @@
   The **issuing bank is a trusted examiner**: the contract can prove that every stipulated document
   slot is anchored and currently verified, but it cannot read IPFS contents, assess documentary
   wording, or apply UCP 600/ISBP discrepancy rules — honoring is the bank's role-gated decision.
-- **Docs are tamper-evident, not private.** Only CIDs are on-chain. An anchor is locked once written
-  (no silent CID replacement); verification can be revoked and is re-checked at examination time.
+- **Docs are tamper-evident, not private.** Only CIDs are on-chain. A **live** anchor is immutable —
+  anchoring over it reverts. Corrections go through role-gated paths that are fully audited:
+  `replaceDocument` (designated role, original issuer or admin) swaps a CID and emits
+  `DocumentReplaced` with the previous CID, and a revoked slot can be re-anchored. Verification can
+  be revoked and is re-checked at examination time. Closed trades (settled/reclaimed) reject
+  anchoring, replacement and revocation, so their record stays final.
 - **The settlement token is trusted.** `TradeUSD` is injected; a malicious token cannot break
   `nonReentrant`/CEI (proved by `MaliciousReentrancy`), but could censor transfers.
 - **Only the core mutates.** Every companion's mutators are gated by a `CONTROLLER_ROLE` that only
@@ -41,7 +45,8 @@
 | **Reentrancy** | Malicious ERC-20 transfer callback / ERC-721 receiver hook | `nonReentrant` on `LetterOfCredit.honor`/`drawDeferred`/`reclaim` + strict CEI + `SafeERC20` | `Reentrancy.test.js` (sight honor and deferred draw) |
 | **Stablecoin inflation** | Anyone mints `TradeUSD` | `mint` is `MINTER_ROLE`-gated | `Tokens.test.js` |
 | **Settlement stall (importer)** | Importer withholds delivery | Either bank may `forceFinalizeDelivery` | `Neutrality` |
-| **Settlement stall (bank, deferred)** | The bank never triggers the maturity payout | `drawDeferredPayment` is permissionless after `maturityAt` — the undertaking is deterministic | `Incoterms.e2e` (deferred flow, drawn by a third party) |
+| **Settlement stall (bank, deferred)** | The bank never triggers the maturity payout | `drawDeferredPayment` is permissionless after `maturityAt` — the undertaking is deterministic; a deferred credit honored after delivery stays `Honored` (never `Settled`) until the draw pays it, so the proceeds can never be stranded | `Incoterms.e2e` (deferred flow, drawn by a third party) |
+| **Closed-trade tampering** | Anchoring, replacing or revoking a document after the trade settled/reclaimed, rewriting the record of a finished trade | `anchorDocument`, `replaceDocument` and `revokeDocument` all run `_requireActive` — a closed trade is final | `DocumentRegistry`, `Incoterms.e2e` (closed-trade guards) |
 | **Settlement stall (exporter)** | The exporter never ships | Expired unused credit is reclaimed **to the issuing bank** (importer/bank/admin may trigger) | `Neutrality` |
 | **Applicant reimbursement default** | The importer never pays the bank back after the proceeds are released | The debt is recorded on-chain (`LC.reimbursed` flag + `LCReimbursed` event; `reimburseIssuingBank` is importer-only and pull-based); non-payment is a legal/credit-line matter, as with real L/Cs | `Incoterms.e2e`, `Modules` |
 | **Stranded duty escrow** | Duty escrowed *after* the proceeds were released would never reach the treasury | `payCustomsDuty` reverts `LCAlreadySettled` once `LetterOfCredit.isPaid(id)`; DDP duty must be paid before honor | `AccessControl.test.js`, `Incoterms.e2e` (DDP gate) |
@@ -60,7 +65,7 @@
 ## 4. Test & coverage evidence
 
 ```
-npx hardhat test        # 130 passing
+npx hardhat test        # 143 passing
 npx hardhat coverage    # statements 100% · branches 96.89% · functions 100% · lines 100%
 ```
 
@@ -73,7 +78,7 @@ Mocks are excluded from the coverage denominator via `.solcover.js`.
   wording, or make UCP 600/ISBP discrepancy decisions; the bank remains a trusted examiner.
 - **No refusal / discrepancy notices.** A timely, compliant presentation locks the credit until the
   bank honors it — there is no on-chain refusal path (UCP 600 Art. 16). If the bank stalls, funds
-  and title stay escrowed; refusal/discrepancy notices are future work (as noted in the TODO).
+  and title stay escrowed; refusal/discrepancy notices are future work.
 - **100% cash prefunding.** The bank prefunds every credit, making the undertaking deterministic
   but unlike real contingent L/Cs backed by credit lines or collateral.
 - **Deferred terms are elapsed calendar time after acceptance.** Banking-day calendars, holidays,

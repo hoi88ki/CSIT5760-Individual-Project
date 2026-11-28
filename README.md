@@ -250,7 +250,7 @@ Bank       forceFinalizeDelivery(id)                  → if the importer withho
 │   ├── RegistrySwap.test.js · Modules.test.js · Reentrancy.test.js · Tokens.test.js · Views.test.js
 ├── scripts/
 │   ├── deploy.js                       # deploy + wire the six contracts + roles
-│   ├── smoke.js                        # post-deployment check: one full sight credit on the live core
+│   ├── smoke.js                        # post-deployment check: full credit incl. revoke → replace on the live core
 │   ├── setup-accounts.js               # fund the role accounts, grant roles, mint TradeUSD (recorded)
 │   ├── demo-accounts.js                # multi-party workflow: each step signed by its role account (recorded)
 │   ├── seed-demo.js                    # drive the credit workflow: issue → ship → present → honor → deliver
@@ -260,7 +260,8 @@ Bank       forceFinalizeDelivery(id)                  → if the importer withho
 ├── docker-compose.yml                  # serves the console on :8080
 ├── ui/                                 # the UI: single-file HTML/JS console (no build step)
 │   ├── index.html                      # flow, documents, admin and activity in one page
-│   └── ethers.umd.min.js               # vendored ethers v6 (works offline)
+│   ├── ethers.umd.min.js               # vendored ethers v6 (works offline)
+│   └── nginx-default.conf              # container config: /ui/ path, CORS, root redirect
 ├── docs/
 │   ├── ARCHITECTURE.md · DESIGN_DECISIONS.md · SECURITY.md
 │   ├── IPFS_CONSORTIUM.md              # per-role nodes, upload/retrieve flow
@@ -502,8 +503,9 @@ npx hardhat run scripts/smoke.js  --network sepolia
 
 - [ ] All six contracts show `Successfully verified contract <Name> on the block explorer`
 - [ ] The addresses in [§7](#7-sepolia-deployment-verified) open with `#code` on Sepolia Etherscan
-- [ ] `smoke.js` prints `SMOKE TEST PASSED`: one sight credit driven end-to-end on the live core
-      (application → bank issuance → shipment → custody → presentation → honor → `Settled`)
+- [ ] `smoke.js` prints `SMOKE TEST PASSED`: one credit driven end-to-end on the live core
+      (application → bank issuance → shipment → **revoke → replace** → custody → presentation →
+      honor → `Settled`)
 
 ### F. Objective → evidence map
 

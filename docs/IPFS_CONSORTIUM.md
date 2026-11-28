@@ -10,24 +10,39 @@ every copy of the same file yields the same CID, so no per-role on-chain records
 
 ## 1. Roles, nodes and ports (single-machine demo)
 
-| Role | `IPFS_PATH` | API port | Multiaddr |
-|------|-------------|:--------:|-----------|
-| Exporter | `./.ipfs-exporter` | 5001 | `/ip4/127.0.0.1/tcp/5001` |
-| Importer | `./.ipfs-importer` | 5011 | `/ip4/127.0.0.1/tcp/5011` |
-| Bank | `./.ipfs-bank` | 5021 | `/ip4/127.0.0.1/tcp/5021` |
-| Logistics | `./.ipfs-logistics` | 5031 | `/ip4/127.0.0.1/tcp/5031` |
-| Verifier | `./.ipfs-verifier` | 5041 | `/ip4/127.0.0.1/tcp/5041` |
+Node repos live under `ipfs_data/` (gitignored runtime data — do not commit them):
+
+| Role | `IPFS_PATH` | API port | Gateway port | API multiaddr |
+|------|-------------|:--------:|:------------:|---------------|
+| Exporter | `./ipfs_data/Exporter` | 5001 | 5002 | `/ip4/127.0.0.1/tcp/5001` |
+| Importer | `./ipfs_data/Importer` | 5011 | 5012 | `/ip4/127.0.0.1/tcp/5011` |
+| Bank | `./ipfs_data/Bank` | 5021 | 5022 | `/ip4/127.0.0.1/tcp/5021` |
+| Logistics | `./ipfs_data/Logistics` | 5031 | 5032 | `/ip4/127.0.0.1/tcp/5031` |
+| Verifier | `./ipfs_data/Verifier` | 5041 | 5042 | `/ip4/127.0.0.1/tcp/5041` |
 
 Initialise and start each node with its own API and gateway ports (one daemon per role):
 
 ```bash
-IPFS_PATH=./.ipfs-exporter ipfs init
-IPFS_PATH=./.ipfs-exporter ipfs config Addresses.API /ip4/127.0.0.1/tcp/5001
-IPFS_PATH=./.ipfs-exporter ipfs daemon
-# repeat per role with 5011 / 5021 / 5031 / 5041
+# In Linux
+IPFS_PATH=./ipfs_data/Exporter ipfs init
+IPFS_PATH=./ipfs_data/Exporter ipfs config Addresses.API /ip4/127.0.0.1/tcp/5001
+IPFS_PATH=./ipfs_data/Exporter ipfs config Addresses.Gateway /ip4/127.0.0.1/tcp/5002
+IPFS_PATH=./ipfs_data/Exporter ipfs daemon --offline # Offline mode to disable swarm
+# repeat per role with 5011 / 5021 / 5031 / 5041 (gateways 5012 / 5022 / 5032 / 5042)
+
+# In Windows
+$env:IPFS_PATH = ".\ipfs_data\Exporter"
+ipfs init
+ipfs config Addresses.API /ip4/127.0.0.1/tcp/5001
+ipfs config Addresses.Gateway /ip4/127.0.0.1/tcp/5002
+ipfs daemon --offline # Offline mode to disable swarm
+# repeat per role with 5011 / 5021 / 5031 / 5041 (gateways 5012 / 5022 / 5032 / 5042)
 ```
 
-> On Windows PowerShell use `$env:IPFS_PATH="./.ipfs-exporter"` before the `ipfs` command.
+> **`--offline` disables the swarm** on purpose for the single-machine demo: nodes never
+> replicate from each other automatically, so a node serves exactly the documents it (or a
+> counterparty via `ipfs-pin.js`) copied to it. That keeps the "who holds what" model explicit;
+> drop the flag on a real network to get swarm replication.
 
 ## 2. Daily flow
 
@@ -43,7 +58,7 @@ IPFS_PATH=./.ipfs-exporter ipfs daemon
    ```bash
    # underlying call the console makes
    ipfs cat bafy... --api /ip4/127.0.0.1/tcp/5001
-   # or via the gateway: http://127.0.0.1:8080/ipfs/bafy...
+   # or via that node's gateway: http://127.0.0.1:5002/ipfs/bafy...
    ```
 4. **Keep your own copy** (optional, for resilience): a counterparty that needs a document can pull
    it onto its own node so it stays available even if the origin node goes offline.
